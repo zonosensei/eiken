@@ -124,22 +124,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
 </div>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-import { getFirestore, collection, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
-
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+<script>
 const firebaseConfig = {
   apiKey: "AIzaSyCOP4iunnWjSE9C4LHwYBPVjLcTsKETRs8",
   authDomain: "eiken-37781.firebaseapp.com",
   projectId: "eiken-37781",
   storageBucket: "eiken-37781.firebasestorage.app",
   messagingSenderId: "369428206114",
-  appId: "1:369428206114:web:ec7d82d632609f2062707b",
-  measurementId: "G-NGQ5XDQM9D"
+  appId: "1:369428206114:web:ec7d82d632609f2062707b"
 };
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
 
 const ADMIN_PASS = "tamakyo2024";
 const GRADE_NAMES = {'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
@@ -148,7 +145,7 @@ const MODE_NAMES = {'vocab':'単語練習','question':'過去問','writing':'ラ
 let allStudents = [];
 let currentFilter = 'all';
 
-window.adminLogin = function() {
+function adminLogin() {
   const p = document.getElementById('admin-pass').value;
   if(p === ADMIN_PASS) {
     document.getElementById('login-wrap').style.display = 'none';
@@ -157,12 +154,12 @@ window.adminLogin = function() {
   } else {
     document.getElementById('login-err').style.display = 'block';
   }
-};
+}
 
-window.loadData = async function() {
+async function loadData() {
   document.getElementById('student-list').innerHTML = '<div class="loading">読み込み中...</div>';
   try {
-    const usersSnap = await getDocs(collection(db, 'users'));
+    const usersSnap = await db.collection('users').get();
     allStudents = [];
     const now = Date.now();
     const weekAgo = now - 7*24*60*60*1000;
@@ -171,10 +168,10 @@ window.loadData = async function() {
     for(const userDoc of usersSnap.docs) {
       const uid = userDoc.id;
       const userData = userDoc.data();
-      const logsSnap = await getDocs(query(collection(db,'users',uid,'logs'), orderBy('timestamp','desc'), limit(50)));
+      const logsSnap = await db.collection('users').doc(uid).collection('logs').orderBy('timestamp','desc').limit(50).get();
       const logs = logsSnap.docs.map(d=>({id:d.id,...d.data()}));
       const lastLog = logs[0];
-      const isActive = lastLog && lastLog.timestamp?.toMillis && lastLog.timestamp.toMillis() > weekAgo;
+      const isActive = lastLog?.timestamp?.toMillis && lastLog.timestamp.toMillis() > weekAgo;
       if(isActive) activeCount++;
       const testLogs = logs.filter(l=>l.mode==='test100');
       totalTests += testLogs.length;
@@ -189,17 +186,17 @@ window.loadData = async function() {
     document.getElementById('last-updated').textContent = '最終更新：' + new Date().toLocaleTimeString('ja-JP');
     renderStudents();
   } catch(e) {
-    document.getElementById('student-list').innerHTML = '<div class="empty-msg">データの取得に失敗しました。Firestoreのルールを確認してください。</div>';
+    document.getElementById('student-list').innerHTML = '<div class="empty-msg">データの取得に失敗しました。</div>';
     console.error(e);
   }
-};
+}
 
-window.filterGrade = function(g, btn) {
+function filterGrade(g, btn) {
   currentFilter = g;
   document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   renderStudents();
-};
+}
 
 function renderStudents() {
   const filtered = currentFilter === 'all' ? allStudents : allStudents.filter(s=>s.grade===currentFilter);
@@ -234,18 +231,18 @@ function renderStudents() {
   document.getElementById('student-list').innerHTML = html;
 }
 
-window.showDetail = function(uid) {
+function showDetail(uid) {
   const s = allStudents.find(x=>x.uid===uid);
   if(!s) return;
   document.getElementById('d-name').textContent = s.name;
-  document.getElementById('d-sub').textContent = `${GRADE_NAMES[s.grade]||s.grade}　全${s.logs.length}件の学習記録`;
+  document.getElementById('d-sub').textContent = GRADE_NAMES[s.grade]||s.grade + '　全'+s.logs.length+'件の学習記録';
   let html = '';
   if(s.logs.length === 0) {
     html = '<div style="text-align:center;color:#bbb;padding:20px">学習記録がありません</div>';
   } else {
     for(const log of s.logs.slice(0,30)) {
       const date = log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit'}) : '-';
-      const scoreText = log.mode==='test100' ? `${log.score||0}/100点` : log.mode==='vocab'||log.mode==='question' ? `${log.correct||0}/${log.total||0}正解` : '記録あり';
+      const scoreText = log.mode==='test100' ? `${log.score||0}/100点` : (log.total ? `${log.correct||0}/${log.total||0}正解` : '記録あり');
       const pct = log.mode==='test100' ? (log.score||0) : log.total ? Math.round((log.correct||0)/log.total*100) : null;
       const cls = pct!=null ? (pct>=80?'good':pct>=60?'mid':'low') : '';
       html += `<div class="history-item">
@@ -259,11 +256,11 @@ window.showDetail = function(uid) {
   }
   document.getElementById('d-history').innerHTML = html;
   document.getElementById('detail-modal').style.display = 'flex';
-};
+}
 
-window.closeDetail = function() {
+function closeDetail() {
   document.getElementById('detail-modal').style.display = 'none';
-};
+}
 </script>
 </body>
 </html>
