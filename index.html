@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>英検トレーニング｜多摩境校</title>
+<title>英検トレーナー｜多摩境校</title>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 <style>
@@ -89,8 +89,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .wrong-item:last-child{border-bottom:none}
 .wrong-word{font-weight:600;color:#111}
 .wrong-meaning{color:#888}
+.word-list-item{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:14px}
+.word-list-item:last-child{border-bottom:none}
+.word-list-en{font-weight:600;color:#111}
+.word-list-ja{color:#888}
+.word-list-scroll{max-height:420px;overflow-y:auto;padding:0 4px}
+.mistake-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:14px}
+.mistake-item:last-child{border-bottom:none}
+.tab-row{display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid #eee}
+.tab-btn{padding:8px 16px;font-size:13px;cursor:pointer;background:none;border:none;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px}
+.tab-btn.active{color:#185FA5;border-bottom-color:#185FA5;font-weight:600}
+.search-input{width:100%;border:1px solid #ddd;border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:12px;outline:none}
+.search-input:focus{border-color:#185FA5}
 .overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
 .login-card{background:#fff;border-radius:16px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 4px 20px rgba(0,0,0,0.15)}
+
+@keyframes cdbounce{0%{transform:scale(0.5);opacity:0}60%{transform:scale(1.2)}100%{transform:scale(1);opacity:1}}
+@keyframes fbpop{0%{transform:translate(-50%,-60%) scale(0.5);opacity:0}60%{transform:translate(-50%,-60%) scale(1.15)}100%{transform:translate(-50%,-60%) scale(1);opacity:1}}
 </style>
 </head>
 <body>
@@ -145,6 +160,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div class="mode-icon">⏱️</div>
       <div class="mode-title" style="color:#e85d00;">100問テスト　8分間</div>
       <div class="mode-desc">時間制限あり・本番形式</div>
+    </div>
+    <div class="mode-card" data-mode="mistakes">
+      <div class="mode-icon">📕</div>
+      <div class="mode-title">まちがいノート</div>
+      <div class="mode-desc">間違えた単語を復習</div>
+    </div>
+    <div class="mode-card" data-mode="wordlist">
+      <div class="mode-icon">📋</div>
+      <div class="mode-title">単語リスト</div>
+      <div class="mode-desc">級の単語を一覧表示</div>
     </div>
   </div>
   <div class="content-area" id="content-area"></div>
@@ -226,12 +251,25 @@ function getRandMeanings(g,exclude,n){
   return res;
 }
 
+function updateWritingVisibility(){
+  var noWriting=['5','4'];
+  var card=document.querySelector('[data-mode="writing"]');
+  if(!card) return;
+  if(noWriting.indexOf(grade)>=0){
+    card.style.display='none';
+    if(mode==='writing'){mode='vocab';document.querySelectorAll('.mode-card').forEach(function(c){c.classList.remove('active');});document.querySelector('[data-mode="vocab"]').classList.add('active');}
+  } else {
+    card.style.display='';
+  }
+}
 document.querySelectorAll('.grade-btn').forEach(function(btn){
   btn.addEventListener('click',function(){
     grade=this.dataset.grade;
     document.querySelectorAll('.grade-btn').forEach(function(b){b.classList.remove('active');});
     this.classList.add('active');
-    qIdx=0;answered=false;renderContent();
+    qIdx=0;answered=false;
+    updateWritingVisibility();
+    renderContent();
   });
 });
 document.querySelectorAll('.mode-card').forEach(function(card){
@@ -251,6 +289,8 @@ function renderContent(){
   else if(mode==='question') renderQuestion(el);
   else if(mode==='writing') renderWriting(el);
   else if(mode==='test100') renderTest100Start(el);
+  else if(mode==='mistakes') renderMistakes(el);
+  else if(mode==='wordlist') renderWordList(el);
   else renderStats(el);
 }
 
@@ -272,16 +312,18 @@ function renderVocab(el){
   html+='</div>';
   html+='<button class="next-btn" id="vnext" style="display:none">次の単語へ →</button>';
   el.innerHTML=html;
+  var _item=item;
   el.querySelectorAll('.choice-btn').forEach(function(btn){
-    btn.addEventListener('click',function(){checkVocab(this,meaning);});
+    btn.addEventListener('click',function(){checkVocab(this,meaning,_item);});
   });
   document.getElementById('vnext').addEventListener('click',function(){answered=false;renderVocab(el);});
 }
-function checkVocab(btn,correct){
+function checkVocab(btn,correct,item){
   if(answered)return;answered=true;score.total++;
   var chosen=btn.dataset.choice;
   var ok=(chosen===correct);
-  if(ok)score.correct++;
+  if(ok){score.correct++;removeMistake(item[0],grade);}
+  else{addMistake(item[0],correct,grade);}
   updateScore();
   document.querySelectorAll('.choice-btn').forEach(function(b){
     b.classList.add('disabled');
@@ -400,13 +442,73 @@ function startTest(g){
   var pool=VOCAB[g].slice().sort(function(){return Math.random()-0.5;});
   var questions=pool.slice(0,100);
   testState={grade:g,questions:questions,current:0,correct:0,wrong:[],timeLeft:480,answered:false,finished:false};
-  renderTest();
-  if(testTimer)clearInterval(testTimer);
-  testTimer=setInterval(function(){
-    testState.timeLeft--;
-    updateTimerDisplay();
-    if(testState.timeLeft<=0){clearInterval(testTimer);finishTest();}
-  },1000);
+  showCountdown(function(){
+    renderTest();
+    if(testTimer)clearInterval(testTimer);
+    testTimer=setInterval(function(){
+      testState.timeLeft--;
+      updateTimerDisplay();
+      if(testState.timeLeft<=0){clearInterval(testTimer);finishTest();}
+    },1000);
+  });
+}
+
+function showCountdown(cb){
+  var el=document.getElementById('content-area');
+  var counts=['3','2','1','Go!'];
+  var colors=['#185FA5','#e85d00','#A32D2D','#3B6D11'];
+  var i=0;
+  function step(){
+    if(i>=counts.length){cb();return;}
+    el.innerHTML='<div style="display:flex;align-items:center;justify-content:center;min-height:260px">'
+      +'<div style="font-size:96px;font-weight:700;color:'+colors[i]+';animation:cdbounce 0.4s ease-out;opacity:1" id="cd-num">'+counts[i]+'</div></div>';
+    playBeep(i===counts.length-1);
+    i++;
+    setTimeout(step,800);
+  }
+  step();
+}
+
+function playBeep(isGo){
+  try{
+    var ctx=new(window.AudioContext||window.webkitAudioContext)();
+    var osc=ctx.createOscillator();
+    var gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.frequency.value=isGo?880:440;
+    osc.type=isGo?'sine':'square';
+    gain.gain.setValueAtTime(0.3,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+(isGo?0.4:0.15));
+    osc.start();osc.stop(ctx.currentTime+(isGo?0.4:0.15));
+  }catch(e){}
+}
+
+function playCorrect(){
+  try{
+    var ctx=new(window.AudioContext||window.webkitAudioContext)();
+    var times=[[523,0],[659,0.1],[784,0.2]];
+    times.forEach(function(t){
+      var o=ctx.createOscillator(),g=ctx.createGain();
+      o.connect(g);g.connect(ctx.destination);
+      o.frequency.value=t[0];o.type='sine';
+      g.gain.setValueAtTime(0,ctx.currentTime+t[1]);
+      g.gain.linearRampToValueAtTime(0.25,ctx.currentTime+t[1]+0.02);
+      g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+t[1]+0.2);
+      o.start(ctx.currentTime+t[1]);o.stop(ctx.currentTime+t[1]+0.2);
+    });
+  }catch(e){}
+}
+
+function playWrong(){
+  try{
+    var ctx=new(window.AudioContext||window.webkitAudioContext)();
+    var o=ctx.createOscillator(),g=ctx.createGain();
+    o.connect(g);g.connect(ctx.destination);
+    o.frequency.value=180;o.type='sawtooth';
+    g.gain.setValueAtTime(0.3,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.3);
+    o.start();o.stop(ctx.currentTime+0.3);
+  }catch(e){}
 }
 function updateTimerDisplay(){
   var el=document.getElementById('test-timer');
@@ -448,9 +550,33 @@ function answerTest(btn,correct){
     if(b.dataset.c===correct)b.classList.add('correct');
     else if(b===btn&&!ok)b.classList.add('wrong');
   });
-  if(ok){testState.correct++;}
-  else{testState.wrong.push({word:testState.questions[testState.current][0],correct:correct});}
-  setTimeout(function(){testState.current++;testState.answered=false;testState.current>=100?finishTest():renderTest();},ok?500:800);
+  if(ok){
+    testState.correct++;
+    playCorrect();
+    showTestFeedback(true);
+  } else {
+    var ww=testState.questions[testState.current];
+    testState.wrong.push({word:ww[0],correct:correct});
+    addMistake(ww[0],correct,testState.grade);
+    playWrong();
+    showTestFeedback(false,correct);
+  }
+  setTimeout(function(){testState.current++;testState.answered=false;testState.current>=100?finishTest():renderTest();},ok?600:1000);
+}
+
+function showTestFeedback(ok,correct){
+  var existing=document.getElementById('test-feedback');
+  if(existing)existing.remove();
+  var div=document.createElement('div');
+  div.id='test-feedback';
+  div.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-60%);z-index:50;text-align:center;pointer-events:none;animation:fbpop 0.3s ease-out';
+  if(ok){
+    div.innerHTML='<div style="font-size:56px">⭕</div><div style="font-size:18px;font-weight:700;color:#3B6D11;margin-top:4px">正解！</div>';
+  } else {
+    div.innerHTML='<div style="font-size:56px">❌</div><div style="font-size:14px;font-weight:600;color:#A32D2D;margin-top:4px">'+correct+'</div>';
+  }
+  document.body.appendChild(div);
+  setTimeout(function(){if(div.parentNode)div.remove();},900);
 }
 function finishTest(){
   if(testTimer)clearInterval(testTimer);
@@ -484,6 +610,81 @@ function renderTestResult(){
   document.getElementById('retry-btn').addEventListener('click',function(){testState=null;renderTest100Start(el);});
 }
 
+function renderMistakes(el){
+  var mistakes = JSON.parse(localStorage.getItem('eiken_mistakes')||'[]');
+  var html = '<div style="font-size:14px;font-weight:600;margin-bottom:16px">まちがいノート</div>';
+  if(mistakes.length===0){
+    html += '<div style="text-align:center;color:#bbb;padding:40px 0"><div style="font-size:32px;margin-bottom:8px">📝</div><div>間違えた単語はまだありません</div></div>';
+  } else {
+    html += '<div style="font-size:13px;color:#888;margin-bottom:12px">間違えた単語 '+mistakes.length+'語</div>';
+    html += '<div class="word-list-scroll">';
+    var byGrade = {};
+    mistakes.forEach(function(m){
+      if(!byGrade[m.grade]) byGrade[m.grade]=[];
+      byGrade[m.grade].push(m);
+    });
+    var gnames={'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
+    Object.keys(byGrade).forEach(function(g){
+      html += '<div style="font-size:12px;font-weight:600;color:#185FA5;padding:8px 0 4px">'+gnames[g]+'</div>';
+      byGrade[g].forEach(function(m){
+        html += '<div class="mistake-item">';
+        html += '<div><div class="word-list-en">'+m.word+'</div><div class="word-list-ja">'+m.meaning+'</div></div>';
+        html += '</div>';
+      });
+    });
+    html += '</div>';
+    html += '<button class="next-btn" style="background:#A32D2D;margin-top:12px" id="clear-mistakes">まちがいノートをリセット</button>';
+  }
+  el.innerHTML=html;
+  if(document.getElementById('clear-mistakes')){
+    document.getElementById('clear-mistakes').addEventListener('click',function(){
+      if(confirm('まちがいノートをリセットしますか？')){
+        localStorage.removeItem('eiken_mistakes');
+        renderMistakes(el);
+      }
+    });
+  }
+}
+
+function addMistake(word, meaning, g){
+  var mistakes = JSON.parse(localStorage.getItem('eiken_mistakes')||'[]');
+  var exists = mistakes.some(function(m){return m.word===word&&m.grade===g;});
+  if(!exists) mistakes.push({word:word,meaning:meaning,grade:g,date:Date.now()});
+  if(mistakes.length>200) mistakes=mistakes.slice(-200);
+  localStorage.setItem('eiken_mistakes', JSON.stringify(mistakes));
+}
+
+function removeMistake(word, g){
+  var mistakes = JSON.parse(localStorage.getItem('eiken_mistakes')||'[]');
+  mistakes = mistakes.filter(function(m){return !(m.word===word&&m.grade===g);});
+  localStorage.setItem('eiken_mistakes', JSON.stringify(mistakes));
+}
+
+function renderWordList(el){
+  var gnames={'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
+  var html='<div style="font-size:14px;font-weight:600;margin-bottom:12px">'+gnames[grade]+'の単語リスト（'+VOCAB[grade].length+'語）</div>';
+  html+='<input type="text" class="search-input" id="word-search" placeholder="単語を検索...">';
+  html+='<div class="word-list-scroll" id="word-list-body">';
+  html+=buildWordListHTML(VOCAB[grade],'');
+  html+='</div>';
+  el.innerHTML=html;
+  document.getElementById('word-search').addEventListener('input',function(){
+    var q=this.value.trim().toLowerCase();
+    document.getElementById('word-list-body').innerHTML=buildWordListHTML(VOCAB[grade],q);
+  });
+}
+
+function buildWordListHTML(words, query){
+  var filtered=words.filter(function(w){
+    if(!query) return true;
+    return w[0].toLowerCase().indexOf(query)>=0||w[1].indexOf(query)>=0;
+  });
+  if(filtered.length===0) return '<div style="text-align:center;color:#bbb;padding:20px">見つかりません</div>';
+  return filtered.map(function(w){
+    return '<div class="word-list-item"><span class="word-list-en">'+w[0]+'</span><span class="word-list-ja">'+w[1]+'</span></div>';
+  }).join('');
+}
+
 function renderStats(el){
   var pct=score.total?Math.round(score.correct/score.total*100):0;
   var gradeNames={'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
@@ -506,6 +707,7 @@ function renderStats(el){
   el.innerHTML=html;
 }
 
+updateWritingVisibility();
 renderContent();
 </script>
 
@@ -538,6 +740,7 @@ document.getElementById('login-btn').addEventListener('click', function(){
   db.collection('users').doc(sid).get().then(function(snap){
     if(!snap.exists){ db.collection('users').doc(sid).set({name:name,grade:'3',createdAt:firebase.firestore.FieldValue.serverTimestamp()}); }
     currentUser={uid:sid,name:name};
+    localStorage.setItem('eiken_user',JSON.stringify({uid:sid,name:name,ts:Date.now()}));
     document.getElementById('login-overlay').style.display='none';
     document.getElementById('session-score').textContent=name+' さん | 正解:0/0';
   }).catch(function(e){ err.style.display='block'; err.textContent='エラーが発生しました'; console.error(e); });
@@ -554,6 +757,21 @@ function saveLog(mode,grade,correct,total,score){
   }).catch(function(e){console.warn('保存エラー',e);});
   db.collection('users').doc(currentUser.uid).set({grade:grade,lastActive:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
 }
+
+// 自動ログイン（24時間以内のセッションを復元）
+(function(){
+  var saved = localStorage.getItem('eiken_user');
+  if(!saved) return;
+  try{
+    var u = JSON.parse(saved);
+    var hours24 = 24*60*60*1000;
+    if(Date.now()-u.ts < hours24 && u.uid && u.name){
+      currentUser = {uid:u.uid, name:u.name};
+      document.getElementById('login-overlay').style.display='none';
+      document.getElementById('session-score').textContent=u.name+' さん | 正解:0/0';
+    }
+  }catch(e){ localStorage.removeItem('eiken_user'); }
+})();
 </script>
 </body>
 </html>
