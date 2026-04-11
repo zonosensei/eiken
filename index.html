@@ -99,6 +99,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .tab-row{display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid #eee}
 .tab-btn{padding:8px 16px;font-size:13px;cursor:pointer;background:none;border:none;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px}
 .tab-btn.active{color:#185FA5;border-bottom-color:#185FA5;font-weight:600}
+.grade-badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:500;background:#EBF4FF;color:#0C447C}
 .search-input{width:100%;border:1px solid #ddd;border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:12px;outline:none}
 .search-input:focus{border-color:#185FA5}
 .overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
@@ -167,7 +168,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="mode-card" data-mode="mistakes">
       <div class="mode-icon">📕</div>
       <div class="mode-title">まちがいノート</div>
-      <div class="mode-desc">間違えた単語を復習</div>
+      <div class="mode-desc">苦手度順に自動出題</div>
     </div>
     <div class="mode-card" data-mode="wordlist">
       <div class="mode-icon">📋</div>
@@ -754,53 +755,233 @@ function renderTestResult(){
   document.getElementById('retry-btn').addEventListener('click',function(){testState=null;renderTest100Start(el);});
 }
 
+var _mistakeReviewState = null;
+
 function renderMistakes(el){
   var mistakes = JSON.parse(localStorage.getItem('eiken_mistakes')||'[]');
-  var html = '<div style="font-size:14px;font-weight:600;margin-bottom:16px">まちがいノート</div>';
+  var activeTab = window._mistakesTab || 'list';
+
+  var html = '<div style="font-size:14px;font-weight:600;margin-bottom:12px">📕 まちがいノート</div>';
+
+  // タブ
+  html += '<div class="tab-row">';
+  html += '<button class="tab-btn'+(activeTab==='list'?' active':'')+'" data-tab="list">単語一覧</button>';
+  html += '<button class="tab-btn'+(activeTab==='review'?' active':'')+'" data-tab="review">🔄 復習クイズ</button>';
+  html += '</div>';
+
   if(mistakes.length===0){
     html += '<div style="text-align:center;color:#bbb;padding:40px 0"><div style="font-size:32px;margin-bottom:8px">📝</div><div>間違えた単語はまだありません</div></div>';
-  } else {
-    html += '<div style="font-size:13px;color:#888;margin-bottom:12px">間違えた単語 '+mistakes.length+'語</div>';
+    el.innerHTML=html;
+    el.querySelectorAll('.tab-btn').forEach(function(b){b.addEventListener('click',function(){window._mistakesTab=this.dataset.tab;renderMistakes(el);});});
+    return;
+  }
+
+  if(activeTab==='list'){
+    // 苦手度順に並べる
+    var sorted = mistakes.slice().sort(function(a,b){return (b.weak||1)-(a.weak||1);});
+    html += '<div style="font-size:12px;color:#888;margin-bottom:10px">苦手度の高い順　全'+mistakes.length+'語<br><span style="color:#3B6D11">✓ 3回正解で卒業</span></div>';
     html += '<div class="word-list-scroll">';
-    var byGrade = {};
-    mistakes.forEach(function(m){
-      if(!byGrade[m.grade]) byGrade[m.grade]=[];
-      byGrade[m.grade].push(m);
-    });
     var gnames={'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
-    Object.keys(byGrade).forEach(function(g){
-      html += '<div style="font-size:12px;font-weight:600;color:#185FA5;padding:8px 0 4px">'+gnames[g]+'</div>';
-      byGrade[g].forEach(function(m){
-        html += '<div class="mistake-item">';
-        html += '<div><div class="word-list-en">'+m.word+'</div><div class="word-list-ja">'+m.meaning+'</div></div>';
-        html += '</div>';
-      });
+    sorted.forEach(function(m){
+      var weak = m.weak||1;
+      var corr = m.correct||0;
+      var stars = '';
+      // 苦手度を星で表示（最大3個、赤）
+      for(var s=0;s<Math.min(weak,5);s++) stars+='<span style="color:#A32D2D;font-size:12px">★</span>';
+      // 正解数バー
+      var corrPct = Math.round(corr/3*100);
+      var barColor = corr===0?'#ddd':corr===1?'#e85d00':corr===2?'#BA7517':'#3B6D11';
+      html += '<div class="mistake-item">';
+      html += '<div style="flex:1"><div style="display:flex;align-items:center;gap:6px">';
+      html += '<span class="word-list-en">'+m.word+'</span>';
+      html += '<span class="grade-badge" style="font-size:10px">'+( gnames[m.grade]||m.grade)+'</span>';
+      html += '</div>';
+      html += '<div style="color:#888;font-size:12px;margin-top:2px">'+m.meaning+'</div>';
+      html += '</div>';
+      html += '<div style="text-align:right;min-width:64px">';
+      html += '<div style="font-size:11px">'+stars+'</div>';
+      html += '<div style="margin-top:3px;display:flex;gap:2px;justify-content:flex-end">';
+      for(var c=0;c<3;c++){
+        html += '<div style="width:14px;height:6px;border-radius:3px;background:'+(c<corr?barColor:'#eee')+'"></div>';
+      }
+      html += '</div><div style="font-size:10px;color:#aaa;margin-top:1px">'+corr+'/3回</div>';
+      html += '</div>';
+      html += '</div>';
     });
     html += '</div>';
-    html += '<button class="next-btn" style="background:#A32D2D;margin-top:12px" id="clear-mistakes">まちがいノートをリセット</button>';
+    html += '<button class="next-btn" style="background:#A32D2D;margin-top:12px" id="clear-mistakes">リセット</button>';
+
+  } else {
+    // 復習クイズタブ
+    // 苦手度が高いほど出やすい重み付き抽選
+    var pool = mistakes.slice().sort(function(a,b){return (b.weak||1)-(a.weak||1);});
+    var top = pool.slice(0, Math.min(30, pool.length)); // 上位30語から出題
+    html += '<div style="font-size:12px;color:#888;margin-bottom:12px">苦手度の高い単語を優先出題！正解3回で卒業します。</div>';
+    html += '<div style="background:#EBF4FF;border-radius:10px;padding:12px;margin-bottom:14px;font-size:12px;color:#185FA5">';
+    html += '📌 出題対象：<strong>'+top.length+'語</strong>（苦手度上位から選出）</div>';
+    html += '<button class="next-btn" id="start-review-btn" style="margin-bottom:0">復習クイズをはじめる ▶</button>';
+    el.innerHTML=html;
+    el.querySelectorAll('.tab-btn').forEach(function(b){b.addEventListener('click',function(){window._mistakesTab=this.dataset.tab;renderMistakes(el);});});
+    document.getElementById('start-review-btn').addEventListener('click',function(){
+      startMistakeReview(el, top);
+    });
+    return;
   }
+
   el.innerHTML=html;
-  if(document.getElementById('clear-mistakes')){
-    document.getElementById('clear-mistakes').addEventListener('click',function(){
+  el.querySelectorAll('.tab-btn').forEach(function(b){
+    b.addEventListener('click',function(){window._mistakesTab=this.dataset.tab;renderMistakes(el);});
+  });
+  var clrBtn = document.getElementById('clear-mistakes');
+  if(clrBtn){
+    clrBtn.addEventListener('click',function(){
       if(confirm('まちがいノートをリセットしますか？')){
         localStorage.removeItem('eiken_mistakes');
+        window._mistakesTab='list';
         renderMistakes(el);
       }
     });
   }
 }
 
+function pickWeighted(pool){
+  // 苦手度(weak)の合計でウェイト抽選
+  var total = 0;
+  pool.forEach(function(m){total+=(m.weak||1);});
+  var r = Math.random()*total;
+  var acc = 0;
+  for(var i=0;i<pool.length;i++){
+    acc+=(pool[i].weak||1);
+    if(r<=acc) return pool[i];
+  }
+  return pool[pool.length-1];
+}
+
+function startMistakeReview(el, pool){
+  if(pool.length===0){renderMistakes(el);return;}
+
+  var item = pickWeighted(pool);
+  var gnames={'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
+  var correct = item.meaning;
+  var g = item.grade;
+
+  // 同一級から誤答候補を引く（なければ全体から）
+  var sameGrade = VOCAB[g] ? VOCAB[g].map(function(w){return w[1];}).filter(function(m){return m!==correct;}) : [];
+  var wrongPool = sameGrade.length>=3 ? sameGrade : Object.keys(VOCAB).reduce(function(acc,key){return acc.concat(VOCAB[key].map(function(w){return w[1];}));}, []).filter(function(m){return m!==correct;});
+  var wrongs=[], used={};
+  while(wrongs.length<3&&wrongPool.length>0){
+    var pick=wrongPool[Math.floor(Math.random()*wrongPool.length)];
+    if(!used[pick]){used[pick]=true;wrongs.push(pick);}
+  }
+  var choices=[correct].concat(wrongs).sort(function(){return Math.random()-0.5;});
+
+  var weak = item.weak||1;
+  var corr = item.correct||0;
+  var stars='';
+  for(var s=0;s<Math.min(weak,5);s++) stars+='<span style="font-size:13px">★</span>';
+  var remaining = pool.length;
+
+  var html='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+  html+='<span style="font-size:12px;color:#888">苦手単語復習 | 残り'+remaining+'語</span>';
+  html+='<button id="review-exit-btn" style="font-size:12px;padding:4px 12px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#888;cursor:pointer">一覧に戻る</button>';
+  html+='</div>';
+  // 苦手度バッジ
+  html+='<div style="background:#FFF5F5;border:1px solid #FCEBEB;border-radius:8px;padding:8px 12px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">';
+  html+='<div><div style="font-size:11px;color:#A32D2D;font-weight:600">苦手度</div><div style="color:#A32D2D">'+stars+'<span style="font-size:11px;color:#aaa;margin-left:4px">×'+weak+'</span></div></div>';
+  html+='<div style="text-align:right"><div style="font-size:11px;color:#888">正解回数</div>';
+  html+='<div style="display:flex;gap:3px;margin-top:2px;justify-content:flex-end">';
+  for(var c=0;c<3;c++){
+    var col=c<corr?(corr===1?'#e85d00':corr===2?'#BA7517':'#3B6D11'):'#ddd';
+    html+='<div style="width:18px;height:8px;border-radius:4px;background:'+col+'"></div>';
+  }
+  html+='</div><div style="font-size:10px;color:#aaa;margin-top:2px">あと'+(3-corr)+'回正解で卒業</div>';
+  html+='</div></div>';
+
+  html+='<div class="word-display" style="margin-bottom:4px">'+item.word+'</div>';
+  html+='<div style="font-size:11px;color:#aaa;text-align:center;margin-bottom:14px">'+gnames[g]+'</div>';
+  html+='<div id="rvfb" class="feedback" style="display:none"></div>';
+  html+='<div class="choices" id="rvchoices">';
+  choices.forEach(function(c){
+    html+='<button class="choice-btn" data-c="'+c.replace(/"/g,'&quot;')+'">'+c+'</button>';
+  });
+  html+='</div>';
+  html+='<button class="next-btn" id="rv-next" style="display:none">次の苦手単語へ →</button>';
+
+  el.innerHTML=html;
+
+  var _answered=false;
+  el.querySelectorAll('.choice-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      if(_answered)return; _answered=true;
+      var chosen=this.dataset.c;
+      var ok=(chosen===correct);
+      el.querySelectorAll('.choice-btn').forEach(function(b){
+        b.classList.add('disabled');
+        if(b.dataset.c===correct) b.classList.add('correct');
+        else if(b===this&&!ok) b.classList.add('wrong');
+      }.bind(this));
+      var fb=document.getElementById('rvfb');
+      fb.style.display='block';
+      fb.className='feedback '+(ok?'correct':'wrong');
+      if(ok){
+        fb.textContent='正解！';
+        removeMistake(item.word, g);
+        // pool更新
+        var updated = JSON.parse(localStorage.getItem('eiken_mistakes')||'[]');
+        pool = updated.sort(function(a,b){return (b.weak||1)-(a.weak||1);}).slice(0,30);
+        if(ok){score.correct++;} score.total++;
+        updateScore();
+      } else {
+        fb.textContent='不正解… 正解は「'+correct+'」';
+        addMistake(item.word, correct, g);
+        score.total++;
+        updateScore();
+      }
+      document.getElementById('rv-next').style.display='block';
+    });
+  });
+
+  document.getElementById('rv-next').addEventListener('click',function(){
+    var latest = JSON.parse(localStorage.getItem('eiken_mistakes')||'[]');
+    if(latest.length===0){
+      window._mistakesTab='list';
+      renderMistakes(el);
+      return;
+    }
+    var newPool = latest.sort(function(a,b){return (b.weak||1)-(a.weak||1);}).slice(0,30);
+    startMistakeReview(el, newPool);
+  });
+  document.getElementById('review-exit-btn').addEventListener('click',function(){
+    window._mistakesTab='list';
+    renderMistakes(el);
+  });
+}
+
 function addMistake(word, meaning, g){
   var mistakes = JSON.parse(localStorage.getItem('eiken_mistakes')||'[]');
-  var exists = mistakes.some(function(m){return m.word===word&&m.grade===g;});
-  if(!exists) mistakes.push({word:word,meaning:meaning,grade:g,date:Date.now()});
+  var found = null;
+  for(var i=0;i<mistakes.length;i++){if(mistakes[i].word===word&&mistakes[i].grade===g){found=mistakes[i];break;}}
+  if(!found){
+    mistakes.push({word:word,meaning:meaning,grade:g,date:Date.now(),weak:1,correct:0});
+  } else {
+    found.weak = (found.weak||0) + 1;
+    found.date = Date.now();
+  }
   if(mistakes.length>200) mistakes=mistakes.slice(-200);
   localStorage.setItem('eiken_mistakes', JSON.stringify(mistakes));
 }
 
 function removeMistake(word, g){
   var mistakes = JSON.parse(localStorage.getItem('eiken_mistakes')||'[]');
-  mistakes = mistakes.filter(function(m){return !(m.word===word&&m.grade===g);});
+  var found = null;
+  for(var i=0;i<mistakes.length;i++){if(mistakes[i].word===word&&mistakes[i].grade===g){found=mistakes[i];break;}}
+  if(found){
+    found.correct = (found.correct||0) + 1;
+    // 正解3回でリストから卒業
+    if(found.correct >= 3){
+      mistakes = mistakes.filter(function(m){return !(m.word===word&&m.grade===g);});
+    }
+  }
   localStorage.setItem('eiken_mistakes', JSON.stringify(mistakes));
 }
 
