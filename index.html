@@ -125,7 +125,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div class="app">
   <div class="header">
     <h1>英検トレーナー</h1>
-    <span id="session-score">ログインしてください</span>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span id="session-score">ログインしてください</span>
+      <button id="logout-btn" onclick="doLogout()" style="display:none;font-size:11px;padding:3px 10px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#888;cursor:pointer">ログアウト</button>
+    </div>
   </div>
   <div class="grade-selector">
     <button class="grade-btn" data-grade="5">5級</button>
@@ -885,6 +888,7 @@ document.getElementById('login-btn').addEventListener('click', function(){
     localStorage.setItem('eiken_user',JSON.stringify({uid:sid,name:name,ts:Date.now()}));
     document.getElementById('login-overlay').style.display='none';
     document.getElementById('session-score').textContent=name+' さん | 正解:0/0';
+    document.getElementById('logout-btn').style.display='block';
   }).catch(function(e){ err.style.display='block'; err.textContent='エラーが発生しました'; console.error(e); });
 });
 document.getElementById('login-sid').addEventListener('keydown',function(e){
@@ -898,6 +902,16 @@ function saveLog(mode,grade,correct,total,score){
     timestamp:firebase.firestore.FieldValue.serverTimestamp()
   }).catch(function(e){console.warn('保存エラー',e);});
   db.collection('users').doc(currentUser.uid).set({grade:grade,lastActive:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+}
+
+function doLogout(){
+  if(!confirm('ログアウトしますか？')) return;
+  localStorage.removeItem('eiken_user');
+  currentUser=null;
+  score={correct:0,total:0};
+  document.getElementById('session-score').textContent='ログインしてください';
+  document.getElementById('logout-btn').style.display='none';
+  document.getElementById('login-overlay').style.display='flex';
 }
 
 // 自動ログイン（24時間以内のセッションを復元）
