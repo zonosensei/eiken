@@ -507,20 +507,18 @@ function submitWriting(topic,g){
   fb.style.display='block';fb.textContent='AIが採点しています...';
   var names={'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
   var prompt='英検'+names[g]+'のライティング問題を採点してください。\n\n問題：'+topic+'\n解答：'+essay+'\n\n以下の形式で日本語でフィードバックしてください：\n\n【スコア】内容・構成・語彙・文法それぞれ5点満点\n【よかった点】2〜3点\n【改善点】2〜3点\n【模範解答例】\n\n簡潔にわかりやすく、中高生向けでお願いします。';
-  fetch('https://api.anthropic.com/v1/messages',{
+  var apiKey='AIzaSyA_r7w1LGJorvfgle3W7VHgLcT0C4Cxjrw';
+  fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+apiKey,{
     method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'anthropic-dangerous-direct-browser-access':'true'
-    },
-    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:prompt}]})
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
   }).then(function(r){return r.json();}).then(function(data){
-    var text=data.content&&data.content.map(function(i){return i.text||'';}).join('');
+    var text=data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts&&data.candidates[0].content.parts[0].text;
     if(text){
       fb.textContent=text;
       if(window.db&&currentUser) saveLog('writing',g,0,0,null);
     } else {
-      fb.textContent='エラーが発生しました。もう一度お試しください。\n\n詳細：'+(data.error&&data.error.message||JSON.stringify(data));
+      fb.textContent='エラーが発生しました。もう一度お試しください。\n\n詳細：'+JSON.stringify(data);
     }
   }).catch(function(e){
     fb.textContent='エラーが発生しました。もう一度お試しください。';
