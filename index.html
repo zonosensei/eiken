@@ -91,6 +91,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .wrong-word{font-weight:600;color:#111}
 .wrong-meaning{color:#888}
 </style>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
 <div class="app">
@@ -568,55 +570,46 @@ renderContent();
   </div>
 </div>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-import { getFirestore, doc, setDoc, getDoc, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-const firebaseConfig = {
+
+<script>
+firebase.initializeApp({
   apiKey: "AIzaSyCOP4iunnWjSE9C4LHwYBPVjLcTsKETRs8",
   authDomain: "eiken-37781.firebaseapp.com",
   projectId: "eiken-37781",
   storageBucket: "eiken-37781.firebasestorage.app",
   messagingSenderId: "369428206114",
   appId: "1:369428206114:web:ec7d82d632609f2062707b"
-};
+});
+var db = firebase.firestore();
+var STUDENTS = {"S01880321": "阿部 咲翔", "S01900283": "釜萢 那柘", "S01877631": "小林 隼大", "S01919809": "髙野 詩歩", "S01924454": "田原 圭翔", "S01944129": "井上 漱木", "S01948447": "田中 碧人", "S01952205": "外山 陽翔", "S01994388": "湯瀬 賢悟", "S02005143": "成田 健真", "S02011689": "戸塚 玲央", "S02013578": "戸﨑 悠太", "S02013577": "辻 一樹", "S01927755": "加治 美海", "S02014000": "中村 翔真", "S02014363": "岡﨑 悠吾", "S02016204": "野崎 志温", "S02016203": "谷口 翔星", "S02016557": "鹿島 颯太", "S02017205": "淺賀 陸翔", "S02017206": "那須 帆夏", "S02017431": "沼上 稀乃花", "S02018900": "平山 春斗", "S01915990": "中間 美紅", "S01918526": "渡邊 幸樹", "S01924801": "竹内 陽馬", "S01985706": "奥野 絢", "S01986731": "大賀 咲", "S01991804": "松下 陸玖", "S01993412": "松宇 藍子", "S02002853": "砂子 優", "S02002612": "工藤 悠仁", "S02006194": "瀧野 寛斗", "S02009553": "堀辺 悠花", "S02010692": "伊藤 杏", "S02012147": "岡村 結斗", "S02014364": "岡﨑 詩心", "S02014379": "槇 颯太", "S02016885": "安西 海翔", "S02016886": "酒井 蒼空", "S02018747": "村上 力斗", "S01928127": "安形 駿矢", "S01937656": "池田 宗多朗", "S01952016": "若槻 柊太", "S01956007": "外山 怜奈", "S01993991": "橋口 栞奈", "S01995191": "金城 柊平", "S02005323": "鈴木 碧海", "S02014002": "松茂良 空", "S02018640": "池田 史実", "S02018641": "井上 すみれこ", "S01979883": "小笠原 凛", "S01985707": "木村 朱里", "S02018901": "相川 駿太"};
+var currentUser = null;
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-
-const STUDENTS = {"S01880321":"阿部 咲翔","S01900283":"釜萢 那柘","S01877631":"小林 隼大","S01919809":"髙野 詩歩","S01924454":"田原 圭翔","S01944129":"井上 漱木","S01948447":"田中 碧人","S01952205":"外山 陽翔","S01994388":"湯瀬 賢悟","S02005143":"成田 健真","S02011689":"戸塚 玲央","S02013578":"戸﨑 悠太","S02013577":"辻 一樹","S01927755":"加治 美海","S02014000":"中村 翔真","S02014363":"岡﨑 悠吾","S02016204":"野崎 志温","S02016203":"谷口 翔星","S02016557":"鹿島 颯太","S02017205":"淺賀 陸翔","S02017206":"那須 帆夏","S02017431":"沼上 稀乃花","S02018900":"平山 春斗","S01915990":"中間 美紅","S01918526":"渡邊 幸樹","S01924801":"竹内 陽馬","S01985706":"奥野 絢","S01986731":"大賀 咲","S01991804":"松下 陸玖","S01993412":"松宇 藍子","S02002853":"砂子 優","S02002612":"工藤 悠仁","S02006194":"瀧野 寛斗","S02009553":"堀辺 悠花","S02010692":"伊藤 杏","S02012147":"岡村 結斗","S02014364":"岡﨑 詩心","S02014379":"槇 颯太","S02016885":"安西 海翔","S02016886":"酒井 蒼空","S02018747":"村上 力斗","S01928127":"安形 駿矢","S01937656":"池田 宗多朗","S01952016":"若槻 柊太","S01956007":"外山 怜奈","S01993991":"橋口 栞奈","S01995191":"金城 柊平","S02005323":"鈴木 碧海","S02014002":"松茂良 空","S02018640":"池田 史実","S02018641":"井上 すみれこ","S01979883":"小笠原 凛","S01985707":"木村 朱里","S02018901":"相川 駿太"};
-let currentUser = null;
-
-window.fbLogin = async function() {
-  const sid = document.getElementById('fb-sid').value.trim().toUpperCase();
-  const err = document.getElementById('fb-err');
+function fbLogin() {
+  var sid = document.getElementById('fb-sid').value.trim().toUpperCase();
+  var err = document.getElementById('fb-err');
   if(!sid){ err.style.display='block'; err.textContent='生徒IDを入力してください'; return; }
-  const name = STUDENTS[sid];
+  var name = STUDENTS[sid];
   if(!name){ err.style.display='block'; err.textContent='IDが見つかりません。先生に確認してください'; return; }
   err.style.display='none';
-  const uid = sid;
-  const userRef = doc(db,'users',uid);
-  const snap = await getDoc(userRef);
-  if(!snap.exists()) {
-    await setDoc(userRef, { name, grade: '3', createdAt: serverTimestamp() });
-  }
-  currentUser = { uid, name };
-  document.getElementById('fb-login-overlay').style.display = 'none';
-  document.getElementById('session-score').textContent = name + ' さん';
-};
+  db.collection('users').doc(sid).get().then(function(snap) {
+    if(!snap.exists) {
+      db.collection('users').doc(sid).set({ name: name, grade: '3', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    }
+    currentUser = { uid: sid, name: name };
+    document.getElementById('fb-login-overlay').style.display = 'none';
+    document.getElementById('session-score').textContent = name + ' さん';
+  });
+}
 
-window.saveLog = async function(mode, grade, correct, total, score) {
+function saveLog(mode, grade, correct, total, score) {
   if(!currentUser) return;
-  try {
-    await addDoc(collection(db,'users',currentUser.uid,'logs'), {
-      mode, grade, correct: correct||0, total: total||0, score: score||null,
-      timestamp: serverTimestamp()
-    });
-    // ユーザーの最新級を更新
-    await setDoc(doc(db,'users',currentUser.uid), { grade, lastActive: serverTimestamp() }, { merge: true });
-  } catch(e){ console.warn('保存エラー',e); }
-};
+  db.collection('users').doc(currentUser.uid).collection('logs').add({
+    mode: mode, grade: grade, correct: correct||0, total: total||0, score: score||null,
+    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+  }).catch(function(e){ console.warn('保存エラー', e); });
+  db.collection('users').doc(currentUser.uid).set({ grade: grade, lastActive: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+}
 </script>
-
 </body>
 </html>
