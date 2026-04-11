@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>英検トレーナー</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;min-height:100vh;display:flex;justify-content:center;padding:16px}
+.app{width:100%;max-width:480px;background:#fff;border-radius:16px;padding:20px;box-shadow:0 2px 12px rgba(0,0,0,0.08)}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.header h1{font-size:20px;font-weight:600;color:#111}
+#session-score{font-size:13px;color:#666}
+.grade-selector{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px}
+.grade-btn{padding:6px 14px;border:1px solid #ddd;border-radius:20px;font-size:13px;cursor:pointer;background:#fff;color:#333;transition:all 0.15s}
+.grade-btn.active{background:#185FA5;color:#fff;border-color:#185FA5}
+.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+.mode-card{padding:16px;border:1px solid #e5e5e5;border-radius:12px;background:#fff;cursor:pointer;transition:all 0.15s}
+.mode-card:hover{background:#f9f9f9}
+.mode-card.active{border:2px solid #185FA5;background:#EBF4FF}
+.mode-icon{font-size:22px;margin-bottom:6px}
+.mode-title{font-size:14px;font-weight:600;color:#111}
+.mode-desc{font-size:12px;color:#888;margin-top:2px}
+.content-area{background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:20px;min-height:300px}
+.word-display{font-size:32px;font-weight:600;color:#111;margin-bottom:6px;text-align:center}
+.word-phonetics{font-size:14px;color:#888;margin-bottom:24px;text-align:center}
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
+.choice-btn{padding:12px 8px;border:1px solid #ddd;border-radius:8px;font-size:14px;cursor:pointer;background:#fff;color:#111;transition:all 0.15s;text-align:center}
+.choice-btn:hover:not(.disabled){background:#f0f0f0}
+.choice-btn.correct{background:#EAF3DE;border-color:#3B6D11;color:#27500A;font-weight:600}
+.choice-btn.wrong{background:#FCEBEB;border-color:#A32D2D;color:#791F1F}
+.choice-btn.disabled{cursor:default}
+.feedback{font-size:14px;padding:10px;border-radius:8px;margin-bottom:12px;text-align:center}
+.feedback.correct{background:#EAF3DE;color:#27500A}
+.feedback.wrong{background:#FCEBEB;color:#791F1F}
+.question-text{font-size:15px;line-height:1.7;color:#111;margin-bottom:20px}
+.question-num{font-size:12px;color:#888;margin-bottom:10px}
+.fill-blank{background:#EBF4FF;border-radius:4px;padding:2px 8px;font-weight:600;color:#185FA5}
+.qchoices{display:flex;flex-direction:column;gap:8px}
+.qchoice-btn{padding:12px;border:1px solid #ddd;border-radius:8px;font-size:14px;cursor:pointer;background:#fff;color:#111;text-align:left;transition:all 0.15s}
+.qchoice-btn:hover:not(.disabled){background:#f0f0f0}
+.qchoice-btn.correct{background:#EAF3DE;border-color:#3B6D11;color:#27500A;font-weight:600}
+.qchoice-btn.wrong{background:#FCEBEB;border-color:#A32D2D;color:#791F1F}
+.qchoice-btn.disabled{cursor:default}
+.expl-box{font-size:13px;line-height:1.6;padding:10px;background:#f5f5f5;border-radius:8px;margin-top:8px;color:#333;display:none}
+.writing-topic{font-size:15px;font-weight:600;color:#111;margin-bottom:8px;padding:12px;background:#f5f5f5;border-radius:8px;line-height:1.6}
+.writing-hint{font-size:13px;color:#888;margin-bottom:12px}
+.writing-area{width:100%;border:1px solid #ddd;border-radius:8px;padding:12px;font-size:14px;font-family:inherit;color:#111;background:#fff;resize:none;height:140px;line-height:1.6}
+.writing-area:focus{outline:none;border-color:#185FA5}
+.word-count{font-size:12px;color:#888;text-align:right;margin-top:4px;margin-bottom:12px}
+.ai-feedback{margin-top:12px;padding:14px;background:#f5f5f5;border-radius:8px;font-size:13px;line-height:1.8;color:#111;display:none;white-space:pre-wrap}
+.next-btn{width:100%;padding:12px;background:#185FA5;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-weight:600;margin-top:12px;transition:background 0.15s}
+.next-btn:hover{background:#0C447C}
+.ai-btn{width:100%;padding:10px;background:#fff;color:#185FA5;border:1px solid #185FA5;border-radius:8px;font-size:13px;cursor:pointer;margin-top:8px;font-weight:500;transition:all 0.15s}
+.ai-btn:hover{background:#EBF4FF}
+.ai-btn:disabled{opacity:0.6;cursor:default}
+.progress-bar-wrap{background:#eee;border-radius:20px;height:6px;margin-bottom:4px}
+.progress-bar{height:6px;border-radius:20px;background:#185FA5;transition:width 0.3s}
+.stats-row{display:flex;gap:10px;margin-bottom:20px}
+.stat-card{flex:1;background:#f5f5f5;border-radius:8px;padding:12px;text-align:center}
+.stat-num{font-size:22px;font-weight:700;color:#111}
+.stat-label{font-size:11px;color:#888;margin-top:2px}
+.cat-label{font-size:13px;color:#111;font-weight:500}
+.cat-row{margin-bottom:14px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <h1>英検トレーナー</h1>
+    <span id="session-score">正解: 0 / 0</span>
+  </div>
+
+  <div class="grade-selector">
+    <button class="grade-btn" onclick="setGrade('5',this)">5級</button>
+    <button class="grade-btn" onclick="setGrade('4',this)">4級</button>
+    <button class="grade-btn active" onclick="setGrade('3',this)">3級</button>
+    <button class="grade-btn" onclick="setGrade('p2',this)">準2級</button>
+    <button class="grade-btn" onclick="setGrade('2',this)">2級</button>
+    <button class="grade-btn" onclick="setGrade('p1',this)">準1級</button>
+  </div>
+
+  <div class="mode-grid">
+    <div class="mode-card active" onclick="setMode('vocab',this)" id="mode-vocab">
+      <div class="mode-icon">📖</div>
+      <div class="mode-title">単語・熟語</div>
+      <div class="mode-desc">4択クイズで覚える</div>
+    </div>
+    <div class="mode-card" onclick="setMode('question',this)" id="mode-question">
+      <div class="mode-icon">📝</div>
+      <div class="mode-title">過去問演習</div>
+      <div class="mode-desc">本番形式で練習</div>
+    </div>
+    <div class="mode-card" onclick="setMode('writing',this)" id="mode-writing">
+      <div class="mode-icon">✏️</div>
+      <div class="mode-title">ライティング</div>
+      <div class="mode-desc">AIが採点・添削</div>
+    </div>
+    <div class="mode-card" onclick="setMode('stats',this)" id="mode-stats">
+      <div class="mode-icon">📊</div>
+      <div class="mode-title">進捗確認</div>
+      <div class="mode-desc">弱点を把握する</div>
+    </div>
+  </div>
+
+  <div class="content-area" id="content-area"></div>
+</div>
+
+<script>
+const DATA = {
+  '5': {
+    vocab: [
+      {word:'apple',ph:'/ˈæpəl/',meaning:'リンゴ',choices:['リンゴ','バナナ','オレンジ','ぶどう']},
+      {word:'school',ph:'/skuːl/',meaning:'学校',choices:['学校','病院','公園','駅']},
+      {word:'happy',ph:'/ˈhæpi/',meaning:'うれしい',choices:['悲しい','うれしい','怒っている','眠い']},
+      {word:'run',ph:'/rʌn/',meaning:'走る',choices:['泳ぐ','食べる','走る','読む']},
+      {word:'big',ph:'/bɪɡ/',meaning:'大きい',choices:['小さい','大きい','速い','遅い']},
+    ],
+    questions: [
+      {q:'I ( ) to school every day.',blank:'go',choices:['go','goes','going','went'],expl:'主語がIなので動詞の原形 go を使います。'},
+      {q:'She ( ) a dog.',blank:'has',choices:['have','has','having','had'],expl:'主語がShe（3人称単数）なので has を使います。'},
+      {q:'( ) you like music?',blank:'Do',choices:['Do','Does','Are','Is'],expl:'一般動詞の疑問文はDo/Doesで始めます。youにはDoを使います。'},
+    ],
+    writing:{topic:'What sport do you like?',hint:'好きなスポーツとその理由を25語以上で書きましょう。',min:25}
+  },
+  '4': {
+    vocab: [
+      {word:'library',ph:'/ˈlaɪbrəri/',meaning:'図書館',choices:['図書館','郵便局','病院','学校']},
+      {word:'usually',ph:'/ˈjuːʒuəli/',meaning:'たいてい',choices:['たいてい','決して','時々','いつも']},
+      {word:'delicious',ph:'/dɪˈlɪʃəs/',meaning:'おいしい',choices:['辛い','おいしい','苦い','すっぱい']},
+      {word:'every',ph:'/ˈevri/',meaning:'すべての',choices:['すべての','いくつかの','多くの','少しの']},
+    ],
+    questions: [
+      {q:'He ( ) TV when I called him.',blank:'was watching',choices:['watches','was watching','watched','is watching'],expl:'「電話した時に〜していた」という過去進行形。was＋動詞-ingの形。'},
+      {q:'I ( ) to Tokyo before.',blank:'have been',choices:['have been','was','went','am'],expl:'「以前に行ったことがある」という経験を表す現在完了形。have beenを使います。'},
+    ],
+    writing:{topic:'What do you usually do on weekends?',hint:'週末にすること・好きなことを35語以上で書きましょう。',min:35}
+  },
+  '3': {
+    vocab: [
+      {word:'environment',ph:'/ɪnˈvaɪrənmənt/',meaning:'環境',choices:['環境','実験','経験','証拠']},
+      {word:'necessary',ph:'/ˈnesəseri/',meaning:'必要な',choices:['危険な','必要な','難しい','簡単な']},
+      {word:'provide',ph:'/prəˈvaɪd/',meaning:'提供する',choices:['受け取る','提供する','拒否する','要求する']},
+      {word:'achieve',ph:'/əˈtʃiːv/',meaning:'達成する',choices:['失敗する','諦める','達成する','忘れる']},
+      {word:'opportunity',ph:'/ˌɒpəˈtjuːnɪti/',meaning:'機会',choices:['機会','問題','解決策','危機']},
+    ],
+    questions: [
+      {q:'I have been studying English ( ) five years.',blank:'for',choices:['for','since','during','while'],expl:'期間を表す場合は for を使います。since は起点（〜から）に使います。'},
+      {q:'She finished her homework before she ( ) to bed.',blank:'went',choices:['go','goes','went','has gone'],expl:'beforeの後の節は過去形。主節も過去形なのでwentが正解。'},
+      {q:'The book ( ) by many students.',blank:'is read',choices:['is read','reads','read','reading'],expl:'受動態：be動詞＋過去分詞。The bookが主語なのでis readが正解。'},
+    ],
+    writing:{topic:'Do you think it is important to study English? Write your opinion with two reasons.',hint:'英語学習の重要性について、理由を2つ挙げて60語以上で書きましょう。',min:60}
+  },
+  'p2': {
+    vocab: [
+      {word:'analyze',ph:'/ˈænəlaɪz/',meaning:'分析する',choices:['分析する','合成する','拡大する','縮小する']},
+      {word:'substantial',ph:'/səbˈstænʃəl/',meaning:'かなりの',choices:['わずかな','かなりの','平均的な','否定的な']},
+      {word:'consequence',ph:'/ˈkɒnsɪkwəns/',meaning:'結果・影響',choices:['原因','動機','結果','過程']},
+      {word:'anticipate',ph:'/ænˈtɪsɪpeɪt/',meaning:'予期する',choices:['忘れる','予期する','記録する','比較する']},
+    ],
+    questions: [
+      {q:'Had it not been for his help, we ( ) the deadline.',blank:'would have missed',choices:['would have missed','will miss','miss','had missed'],expl:'仮定法過去完了の倒置形。帰結節はwould have＋過去分詞。'},
+      {q:'The report suggests that temperatures ( ) by 2°C by 2100.',blank:'will have risen',choices:['will have risen','will rise','would rise','rose'],expl:'未来完了形（will have＋過去分詞）は2100年までに完了する動作を表します。'},
+    ],
+    writing:{topic:'Some people say that AI will replace human workers. Do you agree?',hint:'AIと雇用について賛否を述べ、理由を2〜3つ挙げて80語以上で書きましょう。',min:80}
+  },
+  '2': {
+    vocab: [
+      {word:'advocate',ph:'/ˈædvəkɪt/',meaning:'支持者・唱道する',choices:['批判者','支持者','傍観者','反対者']},
+      {word:'inherent',ph:'/ɪnˈhɪərənt/',meaning:'固有の',choices:['外部の','一時的な','固有の','人工的な']},
+      {word:'mitigate',ph:'/ˈmɪtɪɡeɪt/',meaning:'緩和する',choices:['悪化させる','緩和する','無視する','誇張する']},
+      {word:'paradigm',ph:'/ˈpærədaɪm/',meaning:'パラダイム',choices:['例外','パラダイム','詳細','要約']},
+    ],
+    questions: [
+      {q:'The proposal was met with strong opposition, ( ) it was eventually passed.',blank:'yet',choices:['yet','so','for','nor'],expl:'逆接の等位接続詞 yet（それでも）。強い反対にも関わらず可決されたという対比を表します。'},
+      {q:'( ) to popular belief, coffee does not cause dehydration.',blank:'Contrary',choices:['Contrary','Opposite','Against','Counter'],expl:'Contrary to〜「〜とは反対に」。固定表現として覚えましょう。'},
+    ],
+    writing:{topic:'SNS has significantly changed the way people communicate. Discuss its advantages and disadvantages.',hint:'SNSとコミュニケーションについて、賛否両面から100語以上で論じましょう。',min:100}
+  },
+  'p1': {
+    vocab: [
+      {word:'recalcitrant',ph:'/rɪˈkælsɪtrənt/',meaning:'反抗的な',choices:['従順な','反抗的な','慎重な','楽観的な']},
+      {word:'sagacious',ph:'/səˈɡeɪʃəs/',meaning:'賢明な',choices:['無謀な','賢明な','頑固な','臆病な']},
+      {word:'exacerbate',ph:'/ɪɡˈzæsəbeɪt/',meaning:'悪化させる',choices:['改善する','悪化させる','維持する','変換する']},
+      {word:'loquacious',ph:'/ləˈkweɪʃəs/',meaning:'おしゃべりな',choices:['無口な','おしゃべりな','勤勉な','寛大な']},
+    ],
+    questions: [
+      {q:'The legislation, ( ) by many as too restrictive, was nonetheless signed into law.',blank:'viewed',choices:['viewing','viewed','to view','having viewed'],expl:'分詞構文の受動態。主語The legislationは「見られる」側なのでviewedを使います。'},
+      {q:'Not until the results were published ( ) the extent of the problem.',blank:'did researchers realize',choices:['researchers realized','did researchers realize','researchers had realized','had researchers realized'],expl:'Not until〜で始まると主節は疑問文語順（助動詞＋主語＋動詞）になります。'},
+    ],
+    writing:{topic:'Automation and AI in the workforce is both inevitable and beneficial. Agree or disagree.',hint:'自動化・AIと社会への影響について、具体例を挙げながら120語以上で書きましょう。',min:120}
+  }
+};
+
+let grade='3', mode='vocab', qIdx=0, answered=false;
+let score={correct:0,total:0};
+const gd=()=>DATA[grade]||DATA['3'];
+
+function setGrade(g,btn){
+  grade=g;
+  document.querySelectorAll('.grade-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  qIdx=0;answered=false;renderContent();
+}
+function setMode(m,el){
+  mode=m;
+  document.querySelectorAll('.mode-card').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  qIdx=0;answered=false;renderContent();
+}
+function updateScore(){
+  document.getElementById('session-score').textContent=`正解: ${score.correct} / ${score.total}`;
+}
+function renderContent(){
+  const el=document.getElementById('content-area');
+  if(mode==='vocab') renderVocab(el);
+  else if(mode==='question') renderQuestion(el);
+  else if(mode==='writing') renderWriting(el);
+  else renderStats(el);
+}
+
+function renderVocab(el){
+  const items=gd().vocab;
+  const item=items[qIdx%items.length];
+  const choices=[...item.choices].sort(()=>Math.random()-0.5);
+  el.innerHTML=`
+    <div style="font-size:12px;color:#888;margin-bottom:16px;text-align:center">単語の意味を選んでください</div>
+    <div class="word-display">${item.word}</div>
+    <div class="word-phonetics">${item.ph}</div>
+    <div id="vfb" class="feedback" style="display:none"></div>
+    <div class="choices" id="vchoices">
+      ${choices.map(c=>`<button class="choice-btn" onclick="checkVocab('${c}','${item.meaning}')">${c}</button>`).join('')}
+    </div>
+    <button class="next-btn" id="vnext" style="display:none" onclick="nextVocab()">次の単語へ →</button>`;
+}
+function checkVocab(chosen,correct){
+  if(answered)return;answered=true;score.total++;
+  const ok=chosen===correct;
+  if(ok)score.correct++;
+  updateScore();
+  document.querySelectorAll('.choice-btn').forEach(b=>{
+    b.classList.add('disabled');
+    if(b.textContent===correct)b.classList.add('correct');
+    else if(b.textContent===chosen&&!ok)b.classList.add('wrong');
+  });
+  const fb=document.getElementById('vfb');
+  fb.style.display='block';fb.className='feedback '+(ok?'correct':'wrong');
+  fb.textContent=ok?'正解！':'不正解… 正解は「'+correct+'」';
+  document.getElementById('vnext').style.display='block';
+}
+function nextVocab(){qIdx++;answered=false;renderVocab(document.getElementById('content-area'));}
+
+function renderQuestion(el){
+  const qs=gd().questions;
+  const q=qs[qIdx%qs.length];
+  const dq=q.q.replace('( )',`<span class="fill-blank">（　　）</span>`);
+  const sh=[...q.choices].sort(()=>Math.random()-0.5);
+  el.innerHTML=`
+    <div class="question-num">問題 ${(qIdx%qs.length)+1} / ${qs.length}</div>
+    <div class="question-text">${dq}</div>
+    <div class="qchoices" id="qchoices">
+      ${sh.map((c,i)=>`<button class="qchoice-btn" data-val="${c}" onclick="checkQ(this,'${q.blank}')"><span style="color:#aaa;margin-right:8px">${['①','②','③','④'][i]}</span>${c}</button>`).join('')}
+    </div>
+    <div id="qfb" class="feedback" style="display:none"></div>
+    <div class="expl-box" id="qexpl"></div>
+    <button class="next-btn" id="qnext" style="display:none" onclick="nextQ()">次の問題へ →</button>`;
+}
+function checkQ(btn,correct){
+  if(answered)return;answered=true;score.total++;
+  const chosen=btn.dataset.val;
+  const ok=chosen===correct;
+  if(ok)score.correct++;updateScore();
+  document.querySelectorAll('.qchoice-btn').forEach(b=>{
+    b.classList.add('disabled');
+    if(b.dataset.val===correct)b.classList.add('correct');
+    else if(b.dataset.val===chosen&&!ok)b.classList.add('wrong');
+  });
+  const fb=document.getElementById('qfb');
+  fb.style.display='block';fb.className='feedback '+(ok?'correct':'wrong');
+  fb.textContent=ok?'正解！':'不正解… 正解は「'+correct+'」';
+  const qs=gd().questions;
+  const expl=document.getElementById('qexpl');
+  expl.style.display='block';expl.textContent='解説：'+qs[qIdx%qs.length].expl;
+  document.getElementById('qnext').style.display='block';
+}
+function nextQ(){qIdx++;answered=false;renderQuestion(document.getElementById('content-area'));}
+
+function renderWriting(el){
+  const w=gd().writing;
+  el.innerHTML=`
+    <div style="font-size:12px;font-weight:600;color:#185FA5;margin-bottom:8px">ライティング問題</div>
+    <div class="writing-topic">${w.topic}</div>
+    <div class="writing-hint">${w.hint}</div>
+    <textarea class="writing-area" id="essay" placeholder="ここに英文を書いてください..." oninput="countWords(${w.min})"></textarea>
+    <div class="word-count" id="wcount">0語 / 目安${w.min}語以上</div>
+    <button class="ai-btn" id="aibtn" onclick="submitWriting()">AIに採点・添削してもらう</button>
+    <div class="ai-feedback" id="aifb"></div>`;
+}
+function countWords(min){
+  const t=document.getElementById('essay').value.trim();
+  const n=t?t.split(/\s+/).length:0;
+  const c=n>=min?'#3B6D11':'#888';
+  document.getElementById('wcount').innerHTML=`<span style="color:${c};font-weight:${n>=min?'600':'400'}">${n}語</span> / 目安${min}語以上`;
+}
+async function submitWriting(){
+  const essay=document.getElementById('essay').value.trim();
+  if(!essay){alert('英文を入力してください');return;}
+  const btn=document.getElementById('aibtn');
+  const fb=document.getElementById('aifb');
+  btn.disabled=true;btn.textContent='採点中...';
+  fb.style.display='block';fb.textContent='AIが採点しています...';
+  const names={'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
+  const w=gd().writing;
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:`英検${names[grade]}のライティング問題を採点してください。\n\n問題：${w.topic}\n解答：${essay}\n\n以下の形式で日本語でフィードバックしてください：\n\n【スコア】内容・構成・語彙・文法それぞれ5点満点で評価\n【よかった点】2〜3点\n【改善点】2〜3点\n【模範解答例】\n\n簡潔にわかりやすく、中高生にわかる言葉でお願いします。`}]})});
+    const data=await res.json();
+    const text=data.content.map(i=>i.text||'').join('');
+    fb.textContent=text;
+  }catch(e){
+    fb.textContent='エラーが発生しました。しばらくしてからもう一度お試しください。';
+  }
+  btn.disabled=false;btn.textContent='もう一度採点する';
+}
+
+function renderStats(el){
+  const pct=score.total?Math.round(score.correct/score.total*100):0;
+  const cats=[
+    {label:'単語・熟語',val:72,col:'#185FA5'},
+    {label:'文法・語法',val:58,col:'#0F6E56'},
+    {label:'ライティング',val:65,col:'#3B6D11'},
+  ];
+  el.innerHTML=`
+    <div style="font-size:14px;font-weight:600;margin-bottom:16px">今日の成績</div>
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-num">${score.correct}</div><div class="stat-label">正解数</div></div>
+      <div class="stat-card"><div class="stat-num">${score.total}</div><div class="stat-label">挑戦数</div></div>
+      <div class="stat-card"><div class="stat-num">${pct}%</div><div class="stat-label">正解率</div></div>
+    </div>
+    <div style="font-size:13px;font-weight:600;color:#888;margin-bottom:12px">カテゴリ別（サンプル）</div>
+    ${cats.map(b=>`
+      <div class="cat-row">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span class="cat-label">${b.label}</span>
+          <span style="font-size:13px;color:${b.col};font-weight:600">${b.val}%</span>
+        </div>
+        <div class="progress-bar-wrap"><div class="progress-bar" style="width:${b.val}%;background:${b.col}"></div></div>
+      </div>`).join('')}`;
+}
+
+renderContent();
+</script>
+</body>
+</html>
