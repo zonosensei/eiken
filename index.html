@@ -223,6 +223,8 @@ const WRITING={
 let grade='3', mode='vocab', qIdx=0, answered=false;
 let score={correct:0,total:0};
 let shuffledIdx={};
+var currentLevel=1;
+var LEVEL_MAP={"5": [[0, 226], [226, 452], [452, 680]], "4": [[0, 200], [200, 400], [400, 600], [600, 800]], "3": [[0, 183], [183, 366], [366, 549], [549, 732], [732, 915], [915, 1100]], "p2": [[0, 200], [200, 400], [400, 600], [600, 800], [800, 1000]], "2": [[0, 200], [200, 400], [400, 600], [600, 800], [800, 1000], [1000, 1200], [1200, 1400], [1400, 1600], [1600, 1800]], "p1": [[0, 200], [200, 400], [400, 600], [600, 800], [800, 1000], [1000, 1200], [1200, 1400], [1400, 1600], [1600, 1800], [1800, 2000], [2000, 2200], [2200, 2400], [2400, 2600], [2600, 2800], [2800, 3000]]};
 
 function getShuffled(g){
   if(!shuffledIdx[g]){
@@ -268,6 +270,8 @@ document.querySelectorAll('.grade-btn').forEach(function(btn){
     document.querySelectorAll('.grade-btn').forEach(function(b){b.classList.remove('active');});
     this.classList.add('active');
     qIdx=0;answered=false;
+    currentLevel=1;
+    if(mode==='vocab'){window._vocabShowLevelSelect=true;}
     updateWritingVisibility();
     renderContent();
   });
@@ -294,16 +298,88 @@ function renderContent(){
   else renderStats(el);
 }
 
+function renderVocabLevelSelect(el){
+  var levels=LEVEL_MAP[grade];
+  var gnames={'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
+  var html='<div style="font-size:14px;font-weight:600;color:#111;margin-bottom:4px">'+gnames[grade]+'　レベルを選んでください</div>';
+  html+='<div style="font-size:12px;color:#888;margin-bottom:16px">各レベル約200語</div>';
+  html+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">';
+  levels.forEach(function(range,i){
+    var lv=i+1;
+    var count=range[1]-range[0];
+    var done=shuffledIdx[grade+'-'+lv]?Math.min(shuffledIdx[grade+'-'+lv].pos,count):0;
+    var pct=Math.round(done/count*100);
+    html+='<button class="tg-btn" data-lv="'+lv+'" style="position:relative;overflow:hidden;">';
+    html+='<div style="position:absolute;bottom:0;left:0;height:3px;width:'+pct+'%;background:#185FA5;border-radius:0 0 0 0"></div>';
+    html+='<div style="font-weight:700;font-size:15px">Lv.'+lv+'</div>';
+    html+='<div style="font-size:11px;color:#aaa;margin-top:2px">'+count+'語</div>';
+    if(done>0) html+='<div style="font-size:10px;color:#185FA5;margin-top:1px">'+pct+'%</div>';
+    html+='</button>';
+  });
+  html+='</div>';
+  html+='<button class="tg-btn" id="lv-all" style="width:100%;margin-top:4px">';
+  html+='<div style="font-weight:600">全レベルまとめて</div>';
+  html+='<div style="font-size:11px;color:#aaa;margin-top:2px">'+VOCAB[grade].length+'語</div>';
+  html+='</button>';
+  el.innerHTML=html;
+  el.querySelectorAll('[data-lv]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      currentLevel=parseInt(this.dataset.lv);
+      answered=false;
+      renderVocab(el);
+    });
+  });
+  document.getElementById('lv-all').addEventListener('click',function(){
+    currentLevel=0;
+    answered=false;
+    renderVocab(el);
+  });
+}
+
+function getVocabPool(){
+  if(currentLevel===0) return VOCAB[grade];
+  var levels=LEVEL_MAP[grade];
+  var range=levels[currentLevel-1];
+  return VOCAB[grade].slice(range[0],range[1]);
+}
+
+function getLevelKey(){
+  return grade+(currentLevel===0?'':'-'+currentLevel);
+}
+
+function nextVocabItemLevel(){
+  var pool=getVocabPool();
+  var key=getLevelKey();
+  if(!shuffledIdx[key]){
+    var arr=[];for(var i=0;i<pool.length;i++)arr.push(i);
+    for(var i=arr.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=arr[i];arr[i]=arr[j];arr[j]=t;}
+    shuffledIdx[key]={arr:arr,pos:0};
+  }
+  var s=shuffledIdx[key];
+  var idx=s.arr[s.pos%s.arr.length];
+  s.pos++;
+  return pool[idx];
+}
+
 function renderVocab(el){
-  var item=nextVocabItem(grade);
+  // レベル未選択かつlevelSelect表示フラグ
+  if(typeof currentLevel==='undefined'||currentLevel===null){currentLevel=1;}
+  if(window._vocabShowLevelSelect){window._vocabShowLevelSelect=false;renderVocabLevelSelect(el);return;}
+  var pool=getVocabPool();
+  var key=getLevelKey();
+  var item=nextVocabItemLevel();
   var word=item[0],meaning=item[1];
   var wrongs=getRandMeanings(grade,meaning,3);
   var choices=[meaning].concat(wrongs).sort(function(){return Math.random()-0.5;});
-  var s=getShuffled(grade);
-  var total=VOCAB[grade].length;
-  var html='<div style="font-size:12px;color:#888;margin-bottom:12px;text-align:center">単語の意味を選んでください</div>';
+  var s=shuffledIdx[key]||{pos:0};
+  var total=pool.length;
+  var lname=currentLevel===0?'全レベル':'Lv.'+currentLevel;
+  var html='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+  html+='<span style="font-size:12px;color:#888">'+lname+' | '+Math.min(s.pos,total)+' / '+total+'語</span>';
+  html+='<button id="vocab-end-btn" style="font-size:12px;padding:4px 12px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#888;cursor:pointer">終了</button>';
+  html+='</div>';
   html+='<div class="word-display">'+word+'</div>';
-  html+='<div class="word-counter">'+s.pos+' / '+total+'語</div>';
+  html+='<div style="height:8px"></div>';
   html+='<div id="vfb" class="feedback" style="display:none"></div>';
   html+='<div class="choices" id="vchoices">';
   choices.forEach(function(c){
@@ -317,6 +393,11 @@ function renderVocab(el){
     btn.addEventListener('click',function(){checkVocab(this,meaning,_item);});
   });
   document.getElementById('vnext').addEventListener('click',function(){answered=false;renderVocab(el);});
+  document.getElementById('vocab-end-btn').addEventListener('click',function(){
+    window._vocabShowLevelSelect=true;
+    answered=false;
+    renderVocabLevelSelect(el);
+  });
 }
 function checkVocab(btn,correct,item){
   if(answered)return;answered=true;score.total++;
@@ -708,6 +789,7 @@ function renderStats(el){
 }
 
 updateWritingVisibility();
+window._vocabShowLevelSelect=true;
 renderContent();
 </script>
 
