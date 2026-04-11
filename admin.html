@@ -4,13 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>管理者ダッシュボード｜英検トレーナー</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;min-height:100vh}
 .topbar{background:#1a1a2e;padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
 .topbar-title{color:#fff;font-size:16px;font-weight:600}
 .topbar-badge{background:#e85d00;color:#fff;font-size:11px;padding:3px 10px;border-radius:20px;font-weight:500}
-.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 52px);padding:20px}
 .login-card{background:#fff;border-radius:16px;padding:36px 32px;width:100%;max-width:360px;box-shadow:0 4px 20px rgba(0,0,0,0.1)}
 .login-title{font-size:20px;font-weight:700;color:#111;margin-bottom:6px}
 .login-sub{font-size:13px;color:#888;margin-bottom:24px}
@@ -26,12 +29,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .stat-num{font-size:28px;font-weight:700;color:#185FA5}
 .stat-label{font-size:12px;color:#888;margin-top:4px}
 .section-card{background:#fff;border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
-.section-title{font-size:15px;font-weight:600;color:#111;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.section-title{font-size:15px;font-weight:600;color:#111;margin-bottom:16px}
 .student-table{width:100%;border-collapse:collapse;font-size:13px}
 .student-table th{text-align:left;padding:8px 12px;color:#888;font-weight:500;border-bottom:1px solid #eee}
 .student-table td{padding:10px 12px;border-bottom:1px solid #f5f5f5;color:#111;vertical-align:middle}
 .student-table tr:last-child td{border-bottom:none}
-.student-table tr:hover td{background:#f9f9f9}
+.student-table tr:hover td{background:#f9f9f9;cursor:pointer}
 .grade-badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:500;background:#EBF4FF;color:#0C447C}
 .score-bar-wrap{background:#eee;border-radius:20px;height:6px;width:80px;display:inline-block;vertical-align:middle}
 .score-bar{height:6px;border-radius:20px;background:#185FA5}
@@ -42,225 +45,446 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .filter-btn{padding:6px 14px;border:1px solid #ddd;border-radius:20px;font-size:12px;cursor:pointer;background:#fff;color:#555;transition:all 0.15s}
 .filter-btn.active{background:#185FA5;color:#fff;border-color:#185FA5}
 .empty-msg{text-align:center;color:#bbb;padding:32px;font-size:14px}
-.detail-modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:100;align-items:center;justify-content:center;padding:16px}
-.detail-card{background:#fff;border-radius:16px;padding:24px;width:100%;max-width:460px;max-height:80vh;overflow-y:auto}
+.modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:100;align-items:center;justify-content:center;padding:16px}
+.modal-card{background:#fff;border-radius:16px;padding:24px;width:100%;max-width:460px;max-height:80vh;overflow-y:auto}
 .detail-name{font-size:18px;font-weight:700;color:#111;margin-bottom:4px}
 .detail-sub{font-size:13px;color:#888;margin-bottom:20px}
 .history-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:13px}
 .history-item:last-child{border-bottom:none}
-.history-mode{color:#555}
 .history-score{font-weight:600}
 .history-score.good{color:#3B6D11}
 .history-score.mid{color:#BA7517}
 .history-score.low{color:#A32D2D}
-.history-date{color:#aaa;font-size:12px}
+.history-date{color:#aaa;font-size:12px;margin-top:2px}
 .close-btn{width:100%;padding:10px;background:#f5f5f5;border:none;border-radius:8px;font-size:13px;cursor:pointer;margin-top:16px;color:#555}
-.close-btn:hover{background:#eee}
 .refresh-btn{padding:6px 14px;background:#f0f2f5;border:none;border-radius:6px;font-size:12px;cursor:pointer;color:#555}
-.refresh-btn:hover{background:#e5e7eb}
-.loading{text-align:center;color:#aaa;padding:24px;font-size:14px}
+.rank-list-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;margin-bottom:6px;border:1px solid #f0f0f0;background:#fff}
+.rank-list-item.rank-top{border-color:#e8c84a;background:#FFFDF0}
+.rank-val{font-size:17px;font-weight:700;color:#185FA5;min-width:56px;text-align:right}
+.rank-val.gold{color:#BA7517}
+.rank-tab-row{display:flex;gap:0;margin-bottom:14px;border-bottom:2px solid #eee}
+.rank-tab-btn{padding:8px 14px;font-size:12px;cursor:pointer;background:none;border:none;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap}
+.rank-tab-btn.active{color:#185FA5;border-bottom-color:#185FA5;font-weight:600}
+.qr-tab-row{display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid #eee}
+.qr-tab-btn{padding:8px 16px;font-size:13px;cursor:pointer;background:none;border:none;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap}
+.qr-tab-btn.active{color:#185FA5;border-bottom-color:#185FA5;font-weight:600}
+.qr-ctrl-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.qr-ctrl-select{padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;background:#fff;color:#111;cursor:pointer}
+.qr-print-btn{padding:8px 18px;background:#e85d00;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer}
+.qr-print-btn:hover{background:#c74d00}
+.qr-card-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0}
+.qr-card{border:1px dashed #ddd;padding:12px 8px;display:flex;flex-direction:column;align-items:center;gap:4px;background:#fff;page-break-inside:avoid;break-inside:avoid}
+.qr-card-name{font-size:13px;font-weight:700;color:#111;text-align:center;line-height:1.3}
+.qr-card-id{font-size:10px;color:#aaa;font-family:monospace}
+.qr-card-label{font-size:10px;color:#185FA5;font-weight:600;margin-top:2px}
+.qr-single-wrap{display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 0}
+.qr-single-url{font-size:12px;color:#555;word-break:break-all;text-align:center;padding:8px 12px;background:#f5f5f5;border-radius:8px;max-width:400px}
+@media print{
+  .topbar,.login-wrap,.stats-grid,.section-card:not(#qr-section),.modal-overlay{display:none!important}
+  #qr-section{box-shadow:none!important;padding:0!important;margin:0!important}
+  .qr-tab-row,.qr-ctrl-row,.section-title,.qr-print-btn{display:none!important}
+  .qr-card-grid{grid-template-columns:repeat(4,1fr)}
+  .qr-card{border:1px dashed #ccc}
+  body{background:#fff}
+}
 </style>
 </head>
 <body>
-
 <div class="topbar">
   <span class="topbar-title">英検トレーナー 管理者</span>
   <span class="topbar-badge">多摩境校</span>
 </div>
 
-<!-- ログイン画面 -->
 <div class="login-wrap" id="login-wrap">
   <div class="login-card">
     <div class="login-title">管理者ログイン</div>
     <div class="login-sub">塾長・スタッフ専用</div>
     <div class="login-err" id="login-err">パスワードが違います</div>
     <label class="form-label">パスワード</label>
-    <input type="password" class="form-input" id="admin-pass" placeholder="パスワードを入力" onkeydown="if(event.key==='Enter')adminLogin()">
-    <button class="login-btn" onclick="adminLogin()">ログイン</button>
+    <input type="password" class="form-input" id="admin-pass" placeholder="パスワードを入力">
+    <button class="login-btn" id="admin-login-btn">ログイン</button>
   </div>
 </div>
 
-<!-- ダッシュボード -->
 <div class="dash" id="dash">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
     <div>
       <div style="font-size:20px;font-weight:700;color:#111">生徒進捗ダッシュボード</div>
       <div style="font-size:13px;color:#888;margin-top:2px" id="last-updated"></div>
     </div>
-    <button class="refresh-btn" onclick="loadData()">更新</button>
+    <button class="refresh-btn" id="refresh-btn">更新</button>
   </div>
 
-  <div class="stats-grid" id="stats-grid">
+  <div class="stats-grid">
     <div class="stat-card"><div class="stat-num" id="s-total">-</div><div class="stat-label">登録生徒数</div></div>
     <div class="stat-card"><div class="stat-num" id="s-active">-</div><div class="stat-label">今週学習</div></div>
     <div class="stat-card"><div class="stat-num" id="s-tests">-</div><div class="stat-label">テスト受験数</div></div>
     <div class="stat-card"><div class="stat-num" id="s-avg">-</div><div class="stat-label">平均スコア</div></div>
   </div>
 
-  <div class="section-card">
-    <div class="section-title">
-      <span>生徒一覧</span>
+  <div class="section-card" id="ranking-section">
+    <div class="section-title">🏆 ランキング</div>
+    <div class="rank-tab-row" id="admin-rank-tabs">
+      <button class="rank-tab-btn active" data-rtab="score">🏆 最高スコア</button>
+      <button class="rank-tab-btn" data-rtab="week">🔥 今週の回数</button>
+      <button class="rank-tab-btn" data-rtab="rate">📈 正解率</button>
     </div>
+    <div id="admin-rank-list"><div class="loading">データ読み込み後に表示されます</div></div>
+  </div>
+
+  <div class="section-card">
+    <div class="section-title">生徒一覧</div>
     <div class="filter-row" id="grade-filters">
-      <button class="filter-btn active" onclick="filterGrade('all',this)">すべて</button>
-      <button class="filter-btn" onclick="filterGrade('5',this)">5級</button>
-      <button class="filter-btn" onclick="filterGrade('4',this)">4級</button>
-      <button class="filter-btn" onclick="filterGrade('3',this)">3級</button>
-      <button class="filter-btn" onclick="filterGrade('p2',this)">準2級</button>
-      <button class="filter-btn" onclick="filterGrade('2',this)">2級</button>
-      <button class="filter-btn" onclick="filterGrade('p1',this)">準1級</button>
+      <button class="filter-btn active" data-grade="all">すべて</button>
+      <button class="filter-btn" data-grade="5">5級</button>
+      <button class="filter-btn" data-grade="4">4級</button>
+      <button class="filter-btn" data-grade="3">3級</button>
+      <button class="filter-btn" data-grade="p2">準2級</button>
+      <button class="filter-btn" data-grade="2">2級</button>
+      <button class="filter-btn" data-grade="p1">準1級</button>
     </div>
     <div id="student-list"><div class="loading">読み込み中...</div></div>
   </div>
-</div>
 
-<!-- 生徒詳細モーダル -->
-<div class="detail-modal" id="detail-modal">
-  <div class="detail-card">
-    <div class="detail-name" id="d-name"></div>
-    <div class="detail-sub" id="d-sub"></div>
-    <div id="d-history"></div>
-    <button class="close-btn" onclick="closeDetail()">閉じる</button>
+  <div class="section-card" id="qr-section">
+    <div class="section-title">🖨️ QRコード印刷</div>
+    <div class="qr-tab-row">
+      <button class="qr-tab-btn active" id="qrtab-url">📱 アプリURL（共通）</button>
+      <button class="qr-tab-btn" id="qrtab-individual">👤 生徒ごと（個別）</button>
+    </div>
+    <div id="qr-content"></div>
   </div>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal-card">
+    <div class="detail-name" id="d-name"></div>
+    <div class="detail-sub" id="d-sub"></div>
+    <div id="d-history"></div>
+    <button class="close-btn" id="close-modal">閉じる</button>
+  </div>
+</div>
+
 <script>
-const firebaseConfig = {
+firebase.initializeApp({
   apiKey: "AIzaSyCOP4iunnWjSE9C4LHwYBPVjLcTsKETRs8",
   authDomain: "eiken-37781.firebaseapp.com",
   projectId: "eiken-37781",
   storageBucket: "eiken-37781.firebasestorage.app",
   messagingSenderId: "369428206114",
   appId: "1:369428206114:web:ec7d82d632609f2062707b"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+});
+var db = firebase.firestore();
 
-const ADMIN_PASS = "tamakyo2024";
-const GRADE_NAMES = {'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
-const MODE_NAMES = {'vocab':'単語練習','question':'過去問','writing':'ライティング','test100':'100問テスト'};
+var ADMIN_PASS = "kenthirdman5";
+var GRADE_NAMES = {'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
+var MODE_NAMES = {'vocab':'単語練習','question':'過去問','writing':'ライティング','test100':'100問テスト'};
+var allStudents = [];
+var currentFilter = 'all';
 
-let allStudents = [];
-let currentFilter = 'all';
-
-function adminLogin() {
-  const p = document.getElementById('admin-pass').value;
-  if(p === ADMIN_PASS) {
+document.getElementById('admin-login-btn').addEventListener('click', function(){
+  var p = document.getElementById('admin-pass').value;
+  if(p === ADMIN_PASS){
     document.getElementById('login-wrap').style.display = 'none';
     document.getElementById('dash').style.display = 'block';
     loadData();
   } else {
     document.getElementById('login-err').style.display = 'block';
   }
-}
-
-async function loadData() {
-  document.getElementById('student-list').innerHTML = '<div class="loading">読み込み中...</div>';
-  try {
-    const usersSnap = await db.collection('users').get();
-    allStudents = [];
-    const now = Date.now();
-    const weekAgo = now - 7*24*60*60*1000;
-    let totalTests = 0, totalScore = 0, scoreCount = 0, activeCount = 0;
-
-    for(const userDoc of usersSnap.docs) {
-      const uid = userDoc.id;
-      const userData = userDoc.data();
-      const logsSnap = await db.collection('users').doc(uid).collection('logs').orderBy('timestamp','desc').limit(50).get();
-      const logs = logsSnap.docs.map(d=>({id:d.id,...d.data()}));
-      const lastLog = logs[0];
-      const isActive = lastLog?.timestamp?.toMillis && lastLog.timestamp.toMillis() > weekAgo;
-      if(isActive) activeCount++;
-      const testLogs = logs.filter(l=>l.mode==='test100');
-      totalTests += testLogs.length;
-      testLogs.forEach(t=>{ if(t.score!=null){totalScore+=t.score;scoreCount++;} });
-      allStudents.push({ uid, name: userData.name||'名無し', grade: userData.grade||'3', logs, lastLog, isActive });
-    }
-
-    document.getElementById('s-total').textContent = allStudents.length;
-    document.getElementById('s-active').textContent = activeCount;
-    document.getElementById('s-tests').textContent = totalTests;
-    document.getElementById('s-avg').textContent = scoreCount ? Math.round(totalScore/scoreCount)+'点' : '-';
-    document.getElementById('last-updated').textContent = '最終更新：' + new Date().toLocaleTimeString('ja-JP');
+});
+document.getElementById('admin-pass').addEventListener('keydown', function(e){
+  if(e.key==='Enter') document.getElementById('admin-login-btn').click();
+});
+document.getElementById('refresh-btn').addEventListener('click', loadData);
+document.getElementById('close-modal').addEventListener('click', function(){
+  document.getElementById('detail-modal').style.display = 'none';
+});
+document.querySelectorAll('.filter-btn').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    currentFilter = this.dataset.grade;
+    document.querySelectorAll('.filter-btn').forEach(function(b){b.classList.remove('active');});
+    this.classList.add('active');
     renderStudents();
-  } catch(e) {
-    document.getElementById('student-list').innerHTML = '<div class="empty-msg">データの取得に失敗しました。</div>';
+  });
+});
+
+function loadData(){
+  document.getElementById('student-list').innerHTML = '<div class="loading">読み込み中...</div>';
+  db.collection('users').get().then(function(usersSnap){
+    allStudents = [];
+    var now = Date.now();
+    var weekAgo = now - 7*24*60*60*1000;
+    var totalTests = 0, totalScore = 0, scoreCount = 0, activeCount = 0;
+    var promises = [];
+
+    usersSnap.forEach(function(userDoc){
+      var uid = userDoc.id;
+      var userData = userDoc.data();
+      var p = db.collection('users').doc(uid).collection('logs')
+        .orderBy('timestamp','desc').limit(50).get()
+        .then(function(logsSnap){
+          var logs = logsSnap.docs.map(function(d){ var data=d.data(); data.id=d.id; return data; });
+          var lastLog = logs[0];
+          var isActive = lastLog && lastLog.timestamp && lastLog.timestamp.toMillis && lastLog.timestamp.toMillis() > weekAgo;
+          if(isActive) activeCount++;
+          var testLogs = logs.filter(function(l){return l.mode==='test100';});
+          totalTests += testLogs.length;
+          testLogs.forEach(function(t){ if(t.score!=null){totalScore+=t.score;scoreCount++;} });
+          allStudents.push({uid:uid, name:userData.name||'名無し', grade:userData.grade||'3', logs:logs, lastLog:lastLog, isActive:isActive});
+        });
+      promises.push(p);
+    });
+
+    return Promise.all(promises).then(function(){
+      document.getElementById('s-total').textContent = allStudents.length;
+      document.getElementById('s-active').textContent = activeCount;
+      document.getElementById('s-tests').textContent = totalTests;
+      document.getElementById('s-avg').textContent = scoreCount ? Math.round(totalScore/scoreCount)+'点' : '-';
+      document.getElementById('last-updated').textContent = '最終更新：' + new Date().toLocaleTimeString('ja-JP');
+      renderStudents();
+      renderRankingAdmin();
+      initQRSection();
+    });
+  }).catch(function(e){
+    document.getElementById('student-list').innerHTML = '<div class="empty-msg">データの取得に失敗しました。Firestoreのルールを確認してください。</div>';
     console.error(e);
+  });
+}
+
+var currentRankTab = 'score';
+
+function renderRankingAdmin(){
+  document.querySelectorAll('.rank-tab-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      currentRankTab = this.dataset.rtab;
+      document.querySelectorAll('.rank-tab-btn').forEach(function(b){b.classList.remove('active');});
+      this.classList.add('active');
+      buildRankList();
+    });
+  });
+  buildRankList();
+}
+
+function buildRankList(){
+  var weekAgo = Date.now() - 7*24*60*60*1000;
+  var medals = ['🥇','🥈','🥉'];
+  var GNAMES = {'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
+
+  var rankData = allStudents.map(function(s){
+    var testLogs = s.logs.filter(function(l){return l.mode==='test100';});
+    var bestScore = testLogs.length ? Math.max.apply(null, testLogs.map(function(l){return l.score||0;})) : null;
+    var weekLogs = s.logs.filter(function(l){return l.timestamp&&l.timestamp.toMillis&&l.timestamp.toMillis()>weekAgo;});
+    var weekCorrect = weekLogs.reduce(function(acc,l){return acc+(l.correct||0);},0);
+    var weekTotal = weekLogs.reduce(function(acc,l){return acc+(l.total||0);},0);
+    var weekRate = weekTotal>=10 ? Math.round(weekCorrect/weekTotal*100) : null;
+    return {name:s.name, grade:s.grade, bestScore:bestScore, weekCount:weekLogs.length, weekRate:weekRate};
+  });
+
+  var sorted, valueFn, labelFn, emptyMsg;
+  if(currentRankTab==='score'){
+    sorted = rankData.filter(function(d){return d.bestScore!==null;}).sort(function(a,b){return b.bestScore-a.bestScore;});
+    labelFn = function(d){return d.bestScore+'点';};
+    emptyMsg = 'テスト受験データがありません';
+  } else if(currentRankTab==='week'){
+    sorted = rankData.filter(function(d){return d.weekCount>0;}).sort(function(a,b){return b.weekCount-a.weekCount;});
+    labelFn = function(d){return d.weekCount+'回';};
+    emptyMsg = '今週の学習データがありません';
+  } else {
+    sorted = rankData.filter(function(d){return d.weekRate!==null;}).sort(function(a,b){return b.weekRate-a.weekRate;});
+    labelFn = function(d){return d.weekRate+'%';};
+    emptyMsg = '正解率データが足りません（10問以上必要）';
   }
+
+  if(sorted.length===0){
+    document.getElementById('admin-rank-list').innerHTML='<div class="empty-msg">'+emptyMsg+'</div>';
+    return;
+  }
+
+  var html='';
+  sorted.slice(0,10).forEach(function(d,i){
+    var rank=i+1;
+    var rankStr = rank<=3 ? '<span style="font-size:20px">'+medals[rank-1]+'</span>'
+      : '<span style="font-size:13px;color:#aaa;font-weight:700;min-width:28px;display:inline-block;text-align:center">'+rank+'</span>';
+    var isTop = rank===1;
+    html+='<div class="rank-list-item'+(isTop?' rank-top':'')+'">';
+    html+=rankStr;
+    html+='<div style="flex:1"><div style="font-size:14px;font-weight:600;color:#111">'+d.name+'</div>';
+    html+='<div style="font-size:11px;color:#aaa">'+(GNAMES[d.grade]||d.grade)+'</div></div>';
+    html+='<div class="rank-val'+(isTop?' gold':'')+'">'+labelFn(d)+'</div>';
+    html+='</div>';
+  });
+  if(sorted.length>10) html+='<div style="text-align:center;font-size:12px;color:#aaa;padding:8px">他 '+(sorted.length-10)+'名</div>';
+  document.getElementById('admin-rank-list').innerHTML=html;
 }
 
-function filterGrade(g, btn) {
-  currentFilter = g;
-  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  renderStudents();
-}
-
-function renderStudents() {
-  const filtered = currentFilter === 'all' ? allStudents : allStudents.filter(s=>s.grade===currentFilter);
-  if(filtered.length === 0) {
+function renderStudents(){
+  var filtered = currentFilter==='all' ? allStudents : allStudents.filter(function(s){return s.grade===currentFilter;});
+  if(filtered.length===0){
     document.getElementById('student-list').innerHTML = '<div class="empty-msg">該当する生徒がいません</div>';
     return;
   }
-  filtered.sort((a,b)=>{
-    const ta = a.lastLog?.timestamp?.toMillis?.() || 0;
-    const tb = b.lastLog?.timestamp?.toMillis?.() || 0;
-    return tb - ta;
+  filtered.sort(function(a,b){
+    var ta = a.lastLog&&a.lastLog.timestamp&&a.lastLog.timestamp.toMillis ? a.lastLog.timestamp.toMillis() : 0;
+    var tb = b.lastLog&&b.lastLog.timestamp&&b.lastLog.timestamp.toMillis ? b.lastLog.timestamp.toMillis() : 0;
+    return tb-ta;
   });
-  let html = '<table class="student-table"><thead><tr><th>名前</th><th>級</th><th>最終学習</th><th>テスト</th><th>最高スコア</th><th>進捗</th></tr></thead><tbody>';
-  for(const s of filtered) {
-    const testLogs = s.logs.filter(l=>l.mode==='test100');
-    const bestScore = testLogs.length ? Math.max(...testLogs.map(l=>l.score||0)) : null;
-    const lastDate = s.lastLog?.timestamp?.toDate ? s.lastLog.timestamp.toDate().toLocaleDateString('ja-JP') : '-';
-    const totalLogs = s.logs.length;
-    const pct = Math.min(100, Math.round(totalLogs/50*100));
-    const barClass = pct>=70?'good':pct>=40?'mid':'low';
-    const scoreClass = bestScore>=80?'good':bestScore>=60?'mid':'low';
-    html += `<tr onclick="showDetail('${s.uid}')" style="cursor:pointer">
-      <td><strong>${s.name}</strong>${s.isActive?'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#3B6D11;margin-left:6px;vertical-align:middle"></span>':''}</td>
-      <td><span class="grade-badge">${GRADE_NAMES[s.grade]||s.grade}</span></td>
-      <td>${lastDate}</td>
-      <td>${testLogs.length}回</td>
-      <td><span class="history-score ${bestScore!=null?scoreClass:''}">${bestScore!=null?bestScore+'点':'-'}</span></td>
-      <td><div class="score-bar-wrap"><div class="score-bar ${barClass}" style="width:${pct}%"></div></div></td>
-    </tr>`;
-  }
+  var html = '<table class="student-table"><thead><tr><th>名前</th><th>級</th><th>最終学習</th><th>テスト</th><th>最高スコア</th><th>進捗</th></tr></thead><tbody>';
+  filtered.forEach(function(s){
+    var testLogs = s.logs.filter(function(l){return l.mode==='test100';});
+    var bestScore = testLogs.length ? Math.max.apply(null, testLogs.map(function(l){return l.score||0;})) : null;
+    var lastDate = s.lastLog&&s.lastLog.timestamp&&s.lastLog.timestamp.toDate ? s.lastLog.timestamp.toDate().toLocaleDateString('ja-JP') : '-';
+    var pct = Math.min(100, Math.round(s.logs.length/50*100));
+    var barClass = pct>=70?'good':pct>=40?'mid':'low';
+    var scoreClass = bestScore!=null ? (bestScore>=80?'good':bestScore>=60?'mid':'low') : '';
+    var activeDot = s.isActive ? '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#3B6D11;margin-left:6px;vertical-align:middle"></span>' : '';
+    html += '<tr data-uid="'+s.uid+'">';
+    html += '<td><strong>'+s.name+'</strong>'+activeDot+'</td>';
+    html += '<td><span class="grade-badge">'+(GRADE_NAMES[s.grade]||s.grade)+'</span></td>';
+    html += '<td>'+lastDate+'</td>';
+    html += '<td>'+testLogs.length+'回</td>';
+    html += '<td><span class="history-score '+scoreClass+'">'+(bestScore!=null?bestScore+'点':'-')+'</span></td>';
+    html += '<td><div class="score-bar-wrap"><div class="score-bar '+barClass+'" style="width:'+pct+'%"></div></div></td>';
+    html += '</tr>';
+  });
   html += '</tbody></table>';
   document.getElementById('student-list').innerHTML = html;
+  document.querySelectorAll('.student-table tbody tr').forEach(function(row){
+    row.addEventListener('click', function(){ showDetail(this.dataset.uid); });
+  });
 }
 
-function showDetail(uid) {
-  const s = allStudents.find(x=>x.uid===uid);
+function showDetail(uid){
+  var s = null;
+  for(var i=0;i<allStudents.length;i++){ if(allStudents[i].uid===uid){s=allStudents[i];break;} }
   if(!s) return;
   document.getElementById('d-name').textContent = s.name;
-  document.getElementById('d-sub').textContent = GRADE_NAMES[s.grade]||s.grade + '　全'+s.logs.length+'件の学習記録';
-  let html = '';
-  if(s.logs.length === 0) {
+  document.getElementById('d-sub').textContent = (GRADE_NAMES[s.grade]||s.grade) + '　全' + s.logs.length + '件の学習記録';
+  var html = '';
+  if(s.logs.length===0){
     html = '<div style="text-align:center;color:#bbb;padding:20px">学習記録がありません</div>';
   } else {
-    for(const log of s.logs.slice(0,30)) {
-      const date = log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit'}) : '-';
-      const scoreText = log.mode==='test100' ? `${log.score||0}/100点` : (log.total ? `${log.correct||0}/${log.total||0}正解` : '記録あり');
-      const pct = log.mode==='test100' ? (log.score||0) : log.total ? Math.round((log.correct||0)/log.total*100) : null;
-      const cls = pct!=null ? (pct>=80?'good':pct>=60?'mid':'low') : '';
-      html += `<div class="history-item">
-        <div>
-          <div class="history-mode">${MODE_NAMES[log.mode]||log.mode} <span class="grade-badge">${GRADE_NAMES[log.grade]||log.grade}</span></div>
-          <div class="history-date">${date}</div>
-        </div>
-        <div class="history-score ${cls}">${scoreText}</div>
-      </div>`;
-    }
+    s.logs.slice(0,30).forEach(function(log){
+      var date = log.timestamp&&log.timestamp.toDate ? log.timestamp.toDate().toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit'}) : '-';
+      var scoreText = log.mode==='test100' ? (log.score||0)+'/100点' : (log.total ? (log.correct||0)+'/'+log.total+'正解' : '記録あり');
+      var pct = log.mode==='test100' ? (log.score||0) : (log.total ? Math.round((log.correct||0)/log.total*100) : null);
+      var cls = pct!=null ? (pct>=80?'good':pct>=60?'mid':'low') : '';
+      html += '<div class="history-item">';
+      html += '<div><div style="font-size:13px;color:#555">'+(MODE_NAMES[log.mode]||log.mode)+' <span class="grade-badge">'+(GRADE_NAMES[log.grade]||log.grade)+'</span></div>';
+      html += '<div class="history-date">'+date+'</div></div>';
+      html += '<div class="history-score '+cls+'">'+scoreText+'</div>';
+      html += '</div>';
+    });
   }
   document.getElementById('d-history').innerHTML = html;
   document.getElementById('detail-modal').style.display = 'flex';
 }
 
-function closeDetail() {
-  document.getElementById('detail-modal').style.display = 'none';
+// ========== QRコード印刷機能 ==========
+var APP_URL = 'https://zonosensei.github.io/eiken/';
+var STUDENTS_ALL = {
+  S: {"01880321":"阿部 咲翔","01900283":"釜萢 那柘","01877631":"小林 隼大","01919809":"髙野 詩歩","01924454":"田原 圭翔","01944129":"井上 漱木","01948447":"田中 碧人","01952205":"外山 陽翔","01994388":"湯瀬 賢悟","02005143":"成田 健真","02011689":"戸塚 玲央","02013578":"戸﨑 悠太","02013577":"辻 一樹","01927755":"加治 美海","02014000":"中村 翔真","02014363":"岡﨑 悠吾","02016204":"野崎 志温","02016203":"谷口 翔星","02016557":"鹿島 颯太","02017205":"淺賀 陸翔","02017206":"那須 帆夏","02017431":"沼上 稀乃花","02018900":"平山 春斗","01915990":"中間 美紅","01918526":"渡邊 幸樹","01924801":"竹内 陽馬","01985706":"奥野 絢","01986731":"大賀 咲","01991804":"松下 陸玖","01993412":"松宇 藍子","02002853":"砂子 優","02002612":"工藤 悠仁","02006194":"瀧野 寛斗","02009553":"堀辺 悠花","02010692":"伊藤 杏","02012147":"岡村 結斗","02014364":"岡﨑 詩心","02014379":"槇 颯太","02016885":"安西 海翔","02016886":"酒井 蒼空","02018747":"村上 力斗","01928127":"安形 駿矢","01937656":"池田 宗多朗","01952016":"若槻 柊太","01956007":"外山 怜奈","01993991":"橋口 栞奈","01995191":"金城 柊平","02005323":"鈴木 碧海","02014002":"松茂良 空","02018640":"池田 史実","02018641":"井上 すみれこ","01979883":"小笠原 凛","01985707":"木村 朱里","02018901":"相川 駿太"},
+  T: {"00108065":"中薗 絢斗","00174535":"井元 日向子","00170733":"小笠原 蓮","00168431":"川村 瑚々美","00167557":"柴崎 翔","00173415":"髙橋 ひなた","00138940":"田邉 美香","00167540":"矢澤 舞夏","00138836":"渡部 千夏"}
+};
+var _qrCurrentTab = 'url';
+var _qrInstances = [];
+
+function initQRSection(){
+  document.getElementById('qrtab-url').addEventListener('click', function(){
+    _qrCurrentTab='url';
+    document.querySelectorAll('.qr-tab-btn').forEach(function(b){b.classList.remove('active');});
+    this.classList.add('active');
+    renderQRContent();
+  });
+  document.getElementById('qrtab-individual').addEventListener('click', function(){
+    _qrCurrentTab='individual';
+    document.querySelectorAll('.qr-tab-btn').forEach(function(b){b.classList.remove('active');});
+    this.classList.add('active');
+    renderQRContent();
+  });
+  renderQRContent();
 }
+
+function renderQRContent(){
+  // 既存QRインスタンスをクリア
+  _qrInstances = [];
+  var el = document.getElementById('qr-content');
+
+  if(_qrCurrentTab === 'url'){
+    el.innerHTML =
+      '<div class="qr-ctrl-row">' +
+        '<span style="font-size:13px;color:#555">全生徒共通のアプリURLです。教室掲示や配布プリントに使えます。</span>' +
+        '<button class="qr-print-btn" onclick="window.print()">🖨️ 印刷</button>' +
+      '</div>' +
+      '<div class="qr-single-wrap">' +
+        '<div id="qr-url-single" style="width:200px;height:200px"></div>' +
+        '<div class="qr-single-url">' + APP_URL + '</div>' +
+        '<div style="font-size:12px;color:#888;text-align:center">スキャン後、各自IDを入力してログイン</div>' +
+      '</div>';
+    setTimeout(function(){
+      new QRCode(document.getElementById('qr-url-single'), {
+        text: APP_URL, width:200, height:200,
+        colorDark:'#111', colorLight:'#fff', correctLevel: QRCode.CorrectLevel.M
+      });
+    }, 50);
+
+  } else {
+    // 個別QR
+    var groupFilter = 'all';
+    var html =
+      '<div class="qr-ctrl-row">' +
+        '<select class="qr-ctrl-select" id="qr-group-sel">' +
+          '<option value="all">全員（63名）</option>' +
+          '<option value="S">Sグループ（54名）</option>' +
+          '<option value="T">Tグループ（9名）</option>' +
+        '</select>' +
+        '<span id="qr-count-label" style="font-size:13px;color:#888">63名</span>' +
+        '<button class="qr-print-btn" onclick="window.print()">🖨️ 印刷</button>' +
+      '</div>' +
+      '<div class="qr-card-grid" id="qr-card-grid"></div>';
+    el.innerHTML = html;
+
+    document.getElementById('qr-group-sel').addEventListener('change', function(){
+      renderIndividualCards(this.value);
+    });
+    renderIndividualCards('all');
+  }
+}
+
+function renderIndividualCards(group){
+  var students = [];
+  if(group === 'all' || group === 'S'){
+    Object.entries(STUDENTS_ALL.S).forEach(function(e){ students.push({sid:e[0],name:e[1],group:'S'}); });
+  }
+  if(group === 'all' || group === 'T'){
+    Object.entries(STUDENTS_ALL.T).forEach(function(e){ students.push({sid:e[0],name:e[1],group:'T'}); });
+  }
+  var label = document.getElementById('qr-count-label');
+  if(label) label.textContent = students.length + '名';
+
+  var grid = document.getElementById('qr-card-grid');
+  grid.innerHTML = '';
+  _qrInstances = [];
+
+  students.forEach(function(s){
+    var url = APP_URL + '?sid=' + s.sid;
+    var card = document.createElement('div');
+    card.className = 'qr-card';
+    card.innerHTML =
+      '<div class="qr-card-name">' + s.name + '</div>' +
+      '<div class="qr-card-id">ID: ' + s.sid + ' [' + s.group + ']</div>' +
+      '<div id="qr-' + s.sid + '" style="width:100px;height:100px;display:flex;align-items:center;justify-content:center"></div>' +
+      '<div class="qr-card-label">📱 スキャンで自動ログイン</div>';
+    grid.appendChild(card);
+
+    setTimeout((function(sid, u){
+      return function(){
+        var el = document.getElementById('qr-' + sid);
+        if(el) new QRCode(el, {text:u, width:100, height:100, colorDark:'#111', colorLight:'#fff', correctLevel:QRCode.CorrectLevel.M});
+      };
+    })(s.sid, url), 50);
+  });
+}
+
 </script>
 </body>
 </html>
