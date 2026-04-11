@@ -175,6 +175,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div class="mode-title">単語リスト</div>
       <div class="mode-desc">級の単語を一覧表示</div>
     </div>
+    <div class="mode-card" data-mode="ranking" style="grid-column:1/-1;border-color:#BA7517;">
+      <div class="mode-icon">🏆</div>
+      <div class="mode-title" style="color:#BA7517;">ランキング</div>
+      <div class="mode-desc">みんなの成績を確認</div>
+    </div>
   </div>
   <div class="content-area" id="content-area"></div>
 </div>
@@ -299,6 +304,7 @@ function renderContent(){
   else if(mode==='test100') renderTest100Start(el);
   else if(mode==='mistakes') renderMistakes(el);
   else if(mode==='wordlist') renderWordList(el);
+  else if(mode==='ranking') renderRanking(el);
   else renderStats(el);
 }
 
@@ -500,13 +506,22 @@ function submitWriting(topic,g){
   var prompt='英検'+names[g]+'のライティング問題を採点してください。\n\n問題：'+topic+'\n解答：'+essay+'\n\n以下の形式で日本語でフィードバックしてください：\n\n【スコア】内容・構成・語彙・文法それぞれ5点満点\n【よかった点】2〜3点\n【改善点】2〜3点\n【模範解答例】\n\n簡潔にわかりやすく、中高生向けでお願いします。';
   fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
-    headers:{'Content-Type':'application/json'},
+    headers:{
+      'Content-Type':'application/json',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
     body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:prompt}]})
   }).then(function(r){return r.json();}).then(function(data){
-    fb.textContent=data.content.map(function(i){return i.text||'';}).join('');
-    if(window.db&&currentUser) saveLog('writing',g,0,0,null);
-  }).catch(function(){
+    var text=data.content&&data.content.map(function(i){return i.text||'';}).join('');
+    if(text){
+      fb.textContent=text;
+      if(window.db&&currentUser) saveLog('writing',g,0,0,null);
+    } else {
+      fb.textContent='エラーが発生しました。もう一度お試しください。\n\n詳細：'+(data.error&&data.error.message||JSON.stringify(data));
+    }
+  }).catch(function(e){
     fb.textContent='エラーが発生しました。もう一度お試しください。';
+    console.error(e);
   }).finally(function(){
     btn.disabled=false;btn.textContent='もう一度採点する';
   });
@@ -987,15 +1002,66 @@ function removeMistake(word, g){
 
 function renderWordList(el){
   var gnames={'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
-  var html='<div style="font-size:14px;font-weight:600;margin-bottom:12px">'+gnames[grade]+'の単語リスト（'+VOCAB[grade].length+'語）</div>';
-  html+='<input type="text" class="search-input" id="word-search" placeholder="単語を検索...">';
-  html+='<div class="word-list-scroll" id="word-list-body">';
-  html+=buildWordListHTML(VOCAB[grade],'');
+  var levels=LEVEL_MAP[grade];
+  var total=VOCAB[grade].length;
+  var html='<div style="font-size:14px;font-weight:600;margin-bottom:4px">'+gnames[grade]+'の単語リスト</div>';
+  html+='<div style="font-size:12px;color:#888;margin-bottom:14px">全'+total+'語 ／ レベルを選んでください</div>';
+
+  // 全レベルボタン
+  html+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">';
+  levels.forEach(function(range,i){
+    var lv=i+1;
+    var count=range[1]-range[0];
+    html+='<button class="tg-btn wl-lv-btn" data-lv="'+lv+'" style="padding:10px 4px">';
+    html+='<div style="font-weight:700">Lv.'+lv+'</div>';
+    html+='<div style="font-size:11px;color:#aaa;margin-top:2px">'+count+'語</div>';
+    html+='</button>';
+  });
   html+='</div>';
+  html+='<button class="tg-btn wl-lv-btn" data-lv="0" style="width:100%;margin-bottom:14px">';
+  html+='<div style="font-weight:600">全レベルまとめて</div>';
+  html+='<div style="font-size:11px;color:#aaa;margin-top:2px">'+total+'語</div>';
+  html+='</button>';
+
+  // 検索ボックス（初期は隠す、レベル選択後に表示）
+  html+='<div id="wl-search-wrap" style="display:none">';
+  html+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">';
+  html+='<button id="wl-back-btn" style="font-size:12px;padding:4px 12px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#888;cursor:pointer">← レベル選択に戻る</button>';
+  html+='<span id="wl-level-label" style="font-size:13px;font-weight:600;color:#185FA5"></span>';
+  html+='</div>';
+  html+='<input type="text" class="search-input" id="word-search" placeholder="単語を検索...">';
+  html+='<div class="word-list-scroll" id="word-list-body"></div>';
+  html+='</div>';
+
   el.innerHTML=html;
-  document.getElementById('word-search').addEventListener('input',function(){
-    var q=this.value.trim().toLowerCase();
-    document.getElementById('word-list-body').innerHTML=buildWordListHTML(VOCAB[grade],q);
+
+  function showLevel(lv){
+    var pool = lv===0 ? VOCAB[grade] : (function(){
+      var r=LEVEL_MAP[grade][lv-1]; return VOCAB[grade].slice(r[0],r[1]);
+    })();
+    var label = lv===0 ? '全レベル（'+pool.length+'語）' : 'Lv.'+lv+'（'+pool.length+'語）';
+    document.getElementById('wl-level-label').textContent=label;
+    document.getElementById('wl-search-wrap').style.display='block';
+    // レベルボタンエリアを隠す
+    el.querySelectorAll('.wl-lv-btn').forEach(function(b){b.style.display='none';});
+    el.querySelector('[data-lv="0"]').style.display='none';
+    el.querySelector('div[style*="grid-template-columns"]').style.display='none';
+    el.querySelectorAll('div[style*="margin-bottom:4px"]'); // タイトルはそのまま
+    document.getElementById('word-list-body').innerHTML=buildWordListHTML(pool,'');
+    document.getElementById('word-search').value='';
+    document.getElementById('word-search').addEventListener('input',function(){
+      var q=this.value.trim().toLowerCase();
+      document.getElementById('word-list-body').innerHTML=buildWordListHTML(pool,q);
+    });
+    document.getElementById('wl-back-btn').addEventListener('click',function(){
+      renderWordList(el);
+    });
+  }
+
+  el.querySelectorAll('.wl-lv-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      showLevel(parseInt(this.dataset.lv));
+    });
   });
 }
 
@@ -1005,9 +1071,108 @@ function buildWordListHTML(words, query){
     return w[0].toLowerCase().indexOf(query)>=0||w[1].indexOf(query)>=0;
   });
   if(filtered.length===0) return '<div style="text-align:center;color:#bbb;padding:20px">見つかりません</div>';
-  return filtered.map(function(w){
-    return '<div class="word-list-item"><span class="word-list-en">'+w[0]+'</span><span class="word-list-ja">'+w[1]+'</span></div>';
+  return filtered.map(function(w,i){
+    return '<div class="word-list-item"><span style="color:#bbb;font-size:12px;min-width:28px;display:inline-block">'+(i+1)+'.</span><span class="word-list-en">'+w[0]+'</span><span class="word-list-ja">'+w[1]+'</span></div>';
   }).join('');
+}
+
+function renderRanking(el){
+  el.innerHTML='<div style="font-size:14px;font-weight:600;margin-bottom:8px">🏆 ランキング</div><div style="text-align:center;color:#aaa;padding:32px 0;font-size:13px">読み込み中...</div>';
+  if(!window.db){
+    el.innerHTML='<div style="text-align:center;color:#aaa;padding:32px 0;font-size:13px">ログインするとランキングが見られます</div>';
+    return;
+  }
+  var weekAgo = Date.now() - 7*24*60*60*1000;
+  db.collection('users').get().then(function(usersSnap){
+    var promises=[];
+    var rankData=[];
+    usersSnap.forEach(function(userDoc){
+      var uid=userDoc.id, userData=userDoc.data();
+      var p=db.collection('users').doc(uid).collection('logs')
+        .orderBy('timestamp','desc').limit(100).get()
+        .then(function(logsSnap){
+          var logs=logsSnap.docs.map(function(d){return d.data();});
+          var testLogs=logs.filter(function(l){return l.mode==='test100';});
+          var bestScore=testLogs.length?Math.max.apply(null,testLogs.map(function(l){return l.score||0;})):null;
+          var weekLogs=logs.filter(function(l){return l.timestamp&&l.timestamp.toMillis&&l.timestamp.toMillis()>weekAgo;});
+          var weekCorrect=weekLogs.reduce(function(s,l){return s+(l.correct||0);},0);
+          var weekTotal=weekLogs.reduce(function(s,l){return s+(l.total||0);},0);
+          var weekRate=weekTotal>=10?Math.round(weekCorrect/weekTotal*100):null;
+          rankData.push({uid:uid,name:userData.name||'名無し',grade:userData.grade||'3',
+            bestScore:bestScore,weekCount:weekLogs.length,weekRate:weekRate,
+            isSelf:currentUser&&currentUser.uid===uid});
+        });
+      promises.push(p);
+    });
+    return Promise.all(promises).then(function(){return rankData;});
+  }).then(function(rankData){
+    var activeTab=window._rankingTab||'score';
+    var gnames={'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
+    var medals=['🥇','🥈','🥉'];
+
+    function buildList(sorted, valueLabel, valueFn, emptyMsg){
+      var withVal=sorted.filter(function(d){return valueFn(d)!==null;});
+      var html='';
+      if(withVal.length===0){
+        html+='<div style="text-align:center;color:#bbb;padding:24px;font-size:13px">'+emptyMsg+'</div>';
+        return html;
+      }
+      withVal.slice(0,20).forEach(function(d,i){
+        var isSelf=d.isSelf;
+        var bg=isSelf?'#FFF9E6':'#fff';
+        var border=isSelf?'2px solid #BA7517':'1px solid #f0f0f0';
+        var rank=i+1;
+        var rankStr=rank<=3?medals[rank-1]:'<span style="font-size:13px;color:#aaa;font-weight:700;min-width:24px;display:inline-block;text-align:center">'+rank+'</span>';
+        html+='<div style="display:flex;align-items:center;padding:10px 12px;background:'+bg+';border:'+border+';border-radius:10px;margin-bottom:6px;gap:10px">';
+        html+='<div style="font-size:20px;min-width:28px;text-align:center">'+rankStr+'</div>';
+        html+='<div style="flex:1;min-width:0">';
+        html+='<div style="font-size:14px;font-weight:'+(isSelf?'700':'600')+';color:'+(isSelf?'#BA7517':'#111')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+d.name+(isSelf?' 👈':'')+'</div>';
+        html+='<div style="font-size:11px;color:#aaa;margin-top:1px">'+(gnames[d.grade]||d.grade)+'</div>';
+        html+='</div>';
+        html+='<div style="font-size:17px;font-weight:700;color:'+(rank===1?'#BA7517':rank<=3?'#555':'#185FA5')+'">'+valueLabel(d)+'</div>';
+        html+='</div>';
+      });
+      return html;
+    }
+
+    var tabs=[
+      {key:'score', label:'🏆 最高スコア'},
+      {key:'week',  label:'🔥 今週の回数'},
+      {key:'rate',  label:'📈 正解率'},
+    ];
+
+    var html='<div style="font-size:14px;font-weight:600;margin-bottom:12px">🏆 ランキング</div>';
+    html+='<div class="tab-row" id="rank-tab-row">';
+    tabs.forEach(function(t){
+      html+='<button class="tab-btn'+(activeTab===t.key?' active':'')+'" data-tab="'+t.key+'" style="font-size:12px;padding:8px 10px">'+t.label+'</button>';
+    });
+    html+='</div>';
+    html+='<div id="rank-list">';
+
+    if(activeTab==='score'){
+      var sorted=rankData.slice().sort(function(a,b){return (b.bestScore||0)-(a.bestScore||0);});
+      html+=buildList(sorted,function(d){return d.bestScore+'点';},function(d){return d.bestScore;},'テスト受験データがまだありません');
+    } else if(activeTab==='week'){
+      var sorted=rankData.slice().sort(function(a,b){return b.weekCount-a.weekCount;});
+      html+=buildList(sorted,function(d){return d.weekCount+'回';},function(d){return d.weekCount>0?d.weekCount:null;},'今週の学習データがまだありません');
+    } else {
+      var sorted=rankData.slice().sort(function(a,b){return (b.weekRate||0)-(a.weekRate||0);});
+      html+=buildList(sorted,function(d){return d.weekRate+'%';},function(d){return d.weekRate;},'正解率データが足りません（10問以上必要）');
+    }
+    html+='</div>';
+    html+='<div style="font-size:11px;color:#ccc;text-align:center;margin-top:8px">正解率は今週10問以上で集計</div>';
+
+    el.innerHTML=html;
+    el.querySelectorAll('#rank-tab-row .tab-btn').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        window._rankingTab=this.dataset.tab;
+        renderRanking(el);
+      });
+    });
+  }).catch(function(e){
+    el.innerHTML='<div style="text-align:center;color:#A32D2D;padding:24px;font-size:13px">ランキングの取得に失敗しました</div>';
+    console.error(e);
+  });
 }
 
 function renderStats(el){
@@ -1095,8 +1260,34 @@ function doLogout(){
   document.getElementById('login-overlay').style.display='flex';
 }
 
-// 自動ログイン（24時間以内のセッションを復元）
+// 自動ログイン（24時間以内のセッションを復元 / URLパラメータ対応）
 (function(){
+  // URLパラメータ ?sid=XXXXXXXX で自動ログイン
+  var params = new URLSearchParams(window.location.search);
+  var sidParam = params.get('sid');
+  if(sidParam){
+    var keys = Object.keys(STUDENTS);
+    var sid = null, name = null;
+    for(var i=0;i<keys.length;i++){
+      if(keys[i]===sidParam || keys[i].replace(/^0+/,'')===(sidParam||'').replace(/^0+/,'')){
+        sid=keys[i]; name=STUDENTS[keys[i]]; break;
+      }
+    }
+    if(sid && name){
+      db.collection('users').doc(sid).get().then(function(snap){
+        if(!snap.exists){ db.collection('users').doc(sid).set({name:name,grade:'3',createdAt:firebase.firestore.FieldValue.serverTimestamp()}); }
+        currentUser={uid:sid,name:name};
+        localStorage.setItem('eiken_user',JSON.stringify({uid:sid,name:name,ts:Date.now()}));
+        document.getElementById('login-overlay').style.display='none';
+        document.getElementById('session-score').textContent=name+' さん | 正解:0/0';
+        document.getElementById('logout-btn').style.display='block';
+        // URLからsidパラメータを消す（戻るボタン対策）
+        window.history.replaceState({},'',window.location.pathname);
+      }).catch(function(){});
+      return;
+    }
+  }
+  // localStorageセッション復元
   var saved = localStorage.getItem('eiken_user');
   if(!saved) return;
   try{
@@ -1106,6 +1297,7 @@ function doLogout(){
       currentUser = {uid:u.uid, name:u.name};
       document.getElementById('login-overlay').style.display='none';
       document.getElementById('session-score').textContent=u.name+' さん | 正解:0/0';
+      document.getElementById('logout-btn').style.display='block';
     }
   }catch(e){ localStorage.removeItem('eiken_user'); }
 })();
