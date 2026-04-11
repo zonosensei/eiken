@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理者ダッシュボード｜英検トレーナー</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;min-height:100vh}
+.topbar{background:#1a1a2e;padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
+.topbar-title{color:#fff;font-size:16px;font-weight:600}
+.topbar-badge{background:#e85d00;color:#fff;font-size:11px;padding:3px 10px;border-radius:20px;font-weight:500}
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.login-card{background:#fff;border-radius:16px;padding:36px 32px;width:100%;max-width:360px;box-shadow:0 4px 20px rgba(0,0,0,0.1)}
+.login-title{font-size:20px;font-weight:700;color:#111;margin-bottom:6px}
+.login-sub{font-size:13px;color:#888;margin-bottom:24px}
+.form-label{font-size:13px;color:#555;margin-bottom:6px;display:block}
+.form-input{width:100%;border:1px solid #ddd;border-radius:8px;padding:10px 14px;font-size:14px;color:#111;margin-bottom:16px;outline:none;transition:border 0.15s}
+.form-input:focus{border-color:#185FA5}
+.login-btn{width:100%;padding:12px;background:#185FA5;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}
+.login-btn:hover{background:#0C447C}
+.login-err{font-size:13px;color:#A32D2D;background:#FCEBEB;padding:8px 12px;border-radius:6px;margin-bottom:12px;display:none}
+.dash{display:none;padding:24px;max-width:960px;margin:0 auto}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px}
+.stat-card{background:#fff;border-radius:12px;padding:16px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+.stat-num{font-size:28px;font-weight:700;color:#185FA5}
+.stat-label{font-size:12px;color:#888;margin-top:4px}
+.section-card{background:#fff;border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+.section-title{font-size:15px;font-weight:600;color:#111;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.student-table{width:100%;border-collapse:collapse;font-size:13px}
+.student-table th{text-align:left;padding:8px 12px;color:#888;font-weight:500;border-bottom:1px solid #eee}
+.student-table td{padding:10px 12px;border-bottom:1px solid #f5f5f5;color:#111;vertical-align:middle}
+.student-table tr:last-child td{border-bottom:none}
+.student-table tr:hover td{background:#f9f9f9}
+.grade-badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:500;background:#EBF4FF;color:#0C447C}
+.score-bar-wrap{background:#eee;border-radius:20px;height:6px;width:80px;display:inline-block;vertical-align:middle}
+.score-bar{height:6px;border-radius:20px;background:#185FA5}
+.score-bar.good{background:#3B6D11}
+.score-bar.mid{background:#BA7517}
+.score-bar.low{background:#A32D2D}
+.filter-row{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.filter-btn{padding:6px 14px;border:1px solid #ddd;border-radius:20px;font-size:12px;cursor:pointer;background:#fff;color:#555;transition:all 0.15s}
+.filter-btn.active{background:#185FA5;color:#fff;border-color:#185FA5}
+.empty-msg{text-align:center;color:#bbb;padding:32px;font-size:14px}
+.detail-modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:100;align-items:center;justify-content:center;padding:16px}
+.detail-card{background:#fff;border-radius:16px;padding:24px;width:100%;max-width:460px;max-height:80vh;overflow-y:auto}
+.detail-name{font-size:18px;font-weight:700;color:#111;margin-bottom:4px}
+.detail-sub{font-size:13px;color:#888;margin-bottom:20px}
+.history-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:13px}
+.history-item:last-child{border-bottom:none}
+.history-mode{color:#555}
+.history-score{font-weight:600}
+.history-score.good{color:#3B6D11}
+.history-score.mid{color:#BA7517}
+.history-score.low{color:#A32D2D}
+.history-date{color:#aaa;font-size:12px}
+.close-btn{width:100%;padding:10px;background:#f5f5f5;border:none;border-radius:8px;font-size:13px;cursor:pointer;margin-top:16px;color:#555}
+.close-btn:hover{background:#eee}
+.refresh-btn{padding:6px 14px;background:#f0f2f5;border:none;border-radius:6px;font-size:12px;cursor:pointer;color:#555}
+.refresh-btn:hover{background:#e5e7eb}
+.loading{text-align:center;color:#aaa;padding:24px;font-size:14px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="topbar-title">英検トレーナー 管理者</span>
+  <span class="topbar-badge">多摩境校</span>
+</div>
+
+<!-- ログイン画面 -->
+<div class="login-wrap" id="login-wrap">
+  <div class="login-card">
+    <div class="login-title">管理者ログイン</div>
+    <div class="login-sub">塾長・スタッフ専用</div>
+    <div class="login-err" id="login-err">パスワードが違います</div>
+    <label class="form-label">パスワード</label>
+    <input type="password" class="form-input" id="admin-pass" placeholder="パスワードを入力" onkeydown="if(event.key==='Enter')adminLogin()">
+    <button class="login-btn" onclick="adminLogin()">ログイン</button>
+  </div>
+</div>
+
+<!-- ダッシュボード -->
+<div class="dash" id="dash">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <div>
+      <div style="font-size:20px;font-weight:700;color:#111">生徒進捗ダッシュボード</div>
+      <div style="font-size:13px;color:#888;margin-top:2px" id="last-updated"></div>
+    </div>
+    <button class="refresh-btn" onclick="loadData()">更新</button>
+  </div>
+
+  <div class="stats-grid" id="stats-grid">
+    <div class="stat-card"><div class="stat-num" id="s-total">-</div><div class="stat-label">登録生徒数</div></div>
+    <div class="stat-card"><div class="stat-num" id="s-active">-</div><div class="stat-label">今週学習</div></div>
+    <div class="stat-card"><div class="stat-num" id="s-tests">-</div><div class="stat-label">テスト受験数</div></div>
+    <div class="stat-card"><div class="stat-num" id="s-avg">-</div><div class="stat-label">平均スコア</div></div>
+  </div>
+
+  <div class="section-card">
+    <div class="section-title">
+      <span>生徒一覧</span>
+    </div>
+    <div class="filter-row" id="grade-filters">
+      <button class="filter-btn active" onclick="filterGrade('all',this)">すべて</button>
+      <button class="filter-btn" onclick="filterGrade('5',this)">5級</button>
+      <button class="filter-btn" onclick="filterGrade('4',this)">4級</button>
+      <button class="filter-btn" onclick="filterGrade('3',this)">3級</button>
+      <button class="filter-btn" onclick="filterGrade('p2',this)">準2級</button>
+      <button class="filter-btn" onclick="filterGrade('2',this)">2級</button>
+      <button class="filter-btn" onclick="filterGrade('p1',this)">準1級</button>
+    </div>
+    <div id="student-list"><div class="loading">読み込み中...</div></div>
+  </div>
+</div>
+
+<!-- 生徒詳細モーダル -->
+<div class="detail-modal" id="detail-modal">
+  <div class="detail-card">
+    <div class="detail-name" id="d-name"></div>
+    <div class="detail-sub" id="d-sub"></div>
+    <div id="d-history"></div>
+    <button class="close-btn" onclick="closeDetail()">閉じる</button>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+import { getFirestore, collection, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCOP4iunnWjSE9C4LHwYBPVjLcTsKETRs8",
+  authDomain: "eiken-37781.firebaseapp.com",
+  projectId: "eiken-37781",
+  storageBucket: "eiken-37781.firebasestorage.app",
+  messagingSenderId: "369428206114",
+  appId: "1:369428206114:web:ec7d82d632609f2062707b",
+  measurementId: "G-NGQ5XDQM9D"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const ADMIN_PASS = "tamakyo2024";
+const GRADE_NAMES = {'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
+const MODE_NAMES = {'vocab':'単語練習','question':'過去問','writing':'ライティング','test100':'100問テスト'};
+
+let allStudents = [];
+let currentFilter = 'all';
+
+window.adminLogin = function() {
+  const p = document.getElementById('admin-pass').value;
+  if(p === ADMIN_PASS) {
+    document.getElementById('login-wrap').style.display = 'none';
+    document.getElementById('dash').style.display = 'block';
+    loadData();
+  } else {
+    document.getElementById('login-err').style.display = 'block';
+  }
+};
+
+window.loadData = async function() {
+  document.getElementById('student-list').innerHTML = '<div class="loading">読み込み中...</div>';
+  try {
+    const usersSnap = await getDocs(collection(db, 'users'));
+    allStudents = [];
+    const now = Date.now();
+    const weekAgo = now - 7*24*60*60*1000;
+    let totalTests = 0, totalScore = 0, scoreCount = 0, activeCount = 0;
+
+    for(const userDoc of usersSnap.docs) {
+      const uid = userDoc.id;
+      const userData = userDoc.data();
+      const logsSnap = await getDocs(query(collection(db,'users',uid,'logs'), orderBy('timestamp','desc'), limit(50)));
+      const logs = logsSnap.docs.map(d=>({id:d.id,...d.data()}));
+      const lastLog = logs[0];
+      const isActive = lastLog && lastLog.timestamp?.toMillis && lastLog.timestamp.toMillis() > weekAgo;
+      if(isActive) activeCount++;
+      const testLogs = logs.filter(l=>l.mode==='test100');
+      totalTests += testLogs.length;
+      testLogs.forEach(t=>{ if(t.score!=null){totalScore+=t.score;scoreCount++;} });
+      allStudents.push({ uid, name: userData.name||'名無し', grade: userData.grade||'3', logs, lastLog, isActive });
+    }
+
+    document.getElementById('s-total').textContent = allStudents.length;
+    document.getElementById('s-active').textContent = activeCount;
+    document.getElementById('s-tests').textContent = totalTests;
+    document.getElementById('s-avg').textContent = scoreCount ? Math.round(totalScore/scoreCount)+'点' : '-';
+    document.getElementById('last-updated').textContent = '最終更新：' + new Date().toLocaleTimeString('ja-JP');
+    renderStudents();
+  } catch(e) {
+    document.getElementById('student-list').innerHTML = '<div class="empty-msg">データの取得に失敗しました。Firestoreのルールを確認してください。</div>';
+    console.error(e);
+  }
+};
+
+window.filterGrade = function(g, btn) {
+  currentFilter = g;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderStudents();
+};
+
+function renderStudents() {
+  const filtered = currentFilter === 'all' ? allStudents : allStudents.filter(s=>s.grade===currentFilter);
+  if(filtered.length === 0) {
+    document.getElementById('student-list').innerHTML = '<div class="empty-msg">該当する生徒がいません</div>';
+    return;
+  }
+  filtered.sort((a,b)=>{
+    const ta = a.lastLog?.timestamp?.toMillis?.() || 0;
+    const tb = b.lastLog?.timestamp?.toMillis?.() || 0;
+    return tb - ta;
+  });
+  let html = '<table class="student-table"><thead><tr><th>名前</th><th>級</th><th>最終学習</th><th>テスト</th><th>最高スコア</th><th>進捗</th></tr></thead><tbody>';
+  for(const s of filtered) {
+    const testLogs = s.logs.filter(l=>l.mode==='test100');
+    const bestScore = testLogs.length ? Math.max(...testLogs.map(l=>l.score||0)) : null;
+    const lastDate = s.lastLog?.timestamp?.toDate ? s.lastLog.timestamp.toDate().toLocaleDateString('ja-JP') : '-';
+    const totalLogs = s.logs.length;
+    const pct = Math.min(100, Math.round(totalLogs/50*100));
+    const barClass = pct>=70?'good':pct>=40?'mid':'low';
+    const scoreClass = bestScore>=80?'good':bestScore>=60?'mid':'low';
+    html += `<tr onclick="showDetail('${s.uid}')" style="cursor:pointer">
+      <td><strong>${s.name}</strong>${s.isActive?'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#3B6D11;margin-left:6px;vertical-align:middle"></span>':''}</td>
+      <td><span class="grade-badge">${GRADE_NAMES[s.grade]||s.grade}</span></td>
+      <td>${lastDate}</td>
+      <td>${testLogs.length}回</td>
+      <td><span class="history-score ${bestScore!=null?scoreClass:''}">${bestScore!=null?bestScore+'点':'-'}</span></td>
+      <td><div class="score-bar-wrap"><div class="score-bar ${barClass}" style="width:${pct}%"></div></div></td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  document.getElementById('student-list').innerHTML = html;
+}
+
+window.showDetail = function(uid) {
+  const s = allStudents.find(x=>x.uid===uid);
+  if(!s) return;
+  document.getElementById('d-name').textContent = s.name;
+  document.getElementById('d-sub').textContent = `${GRADE_NAMES[s.grade]||s.grade}　全${s.logs.length}件の学習記録`;
+  let html = '';
+  if(s.logs.length === 0) {
+    html = '<div style="text-align:center;color:#bbb;padding:20px">学習記録がありません</div>';
+  } else {
+    for(const log of s.logs.slice(0,30)) {
+      const date = log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit'}) : '-';
+      const scoreText = log.mode==='test100' ? `${log.score||0}/100点` : log.mode==='vocab'||log.mode==='question' ? `${log.correct||0}/${log.total||0}正解` : '記録あり';
+      const pct = log.mode==='test100' ? (log.score||0) : log.total ? Math.round((log.correct||0)/log.total*100) : null;
+      const cls = pct!=null ? (pct>=80?'good':pct>=60?'mid':'low') : '';
+      html += `<div class="history-item">
+        <div>
+          <div class="history-mode">${MODE_NAMES[log.mode]||log.mode} <span class="grade-badge">${GRADE_NAMES[log.grade]||log.grade}</span></div>
+          <div class="history-date">${date}</div>
+        </div>
+        <div class="history-score ${cls}">${scoreText}</div>
+      </div>`;
+    }
+  }
+  document.getElementById('d-history').innerHTML = html;
+  document.getElementById('detail-modal').style.display = 'flex';
+};
+
+window.closeDetail = function() {
+  document.getElementById('detail-modal').style.display = 'none';
+};
+</script>
+</body>
+</html>
