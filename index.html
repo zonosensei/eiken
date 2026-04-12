@@ -131,7 +131,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div style="font-size:13px;color:#888;margin-bottom:20px">多摩境校</div>
     <div id="login-err" style="font-size:13px;color:#A32D2D;background:#FCEBEB;padding:8px 12px;border-radius:6px;margin-bottom:12px;display:none"></div>
     <label style="font-size:13px;color:#555;display:block;margin-bottom:6px">生徒ID（数字8桁）</label>
-    <input id="login-sid" type="tel" placeholder="例：01880321" style="width:100%;border:1px solid #ddd;border-radius:8px;padding:10px 14px;font-size:14px;margin-bottom:16px;outline:none">
+    <input id="login-sid" type="tel" placeholder="例：01880321" style="width:100%;border:1px solid #ddd;border-radius:8px;padding:10px 14px;font-size:14px;margin-bottom:14px;outline:none">
+    <label style="font-size:13px;color:#555;display:block;margin-bottom:6px">受験する級を選ぶ</label>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px" id="login-grade-btns">
+      <button class="login-grade-btn" data-g="5" style="flex:1;min-width:60px;padding:8px 4px;border:2px solid #ddd;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:#555">5級</button>
+      <button class="login-grade-btn" data-g="4" style="flex:1;min-width:60px;padding:8px 4px;border:2px solid #ddd;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:#555">4級</button>
+      <button class="login-grade-btn" data-g="3" style="flex:1;min-width:60px;padding:8px 4px;border:2px solid #ddd;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;background:#185FA5;color:#fff;border-color:#185FA5">3級</button>
+      <button class="login-grade-btn" data-g="p2" style="flex:1;min-width:60px;padding:8px 4px;border:2px solid #ddd;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:#555">準2級</button>
+      <button class="login-grade-btn" data-g="2" style="flex:1;min-width:60px;padding:8px 4px;border:2px solid #ddd;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:#555">2級</button>
+      <button class="login-grade-btn" data-g="p1" style="flex:1;min-width:60px;padding:8px 4px;border:2px solid #ddd;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:#555">準1級</button>
+    </div>
     <button id="login-btn" style="width:100%;padding:12px;background:#185FA5;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">ログイン・開始</button>
     <div style="font-size:12px;color:#bbb;text-align:center;margin-top:12px">IDは先生から配布されたプリントを確認してください</div>
   </div>
@@ -228,8 +237,14 @@ function getRandMeanings(g,exclude,n){
   }
   return res;
 }
+// ヘッダーの級ボタン（ログイン後は変更不可・表示のみ）
 document.querySelectorAll('.grade-btn').forEach(function(btn){
   btn.addEventListener('click',function(){
+    // ログイン済みの場合は変更不可
+    if(currentUser){
+      alert('級を変更するにはログアウトが必要です');
+      return;
+    }
     grade=this.dataset.grade;
     document.querySelectorAll('.grade-btn').forEach(function(b){b.classList.remove('active');});
     this.classList.add('active');
@@ -237,6 +252,17 @@ document.querySelectorAll('.grade-btn').forEach(function(btn){
     currentLevel=1;
     if(mode==='vocab'){window._vocabShowLevelSelect=true;}
         renderContent();
+  });
+});
+// ログイン画面の級選択
+var loginGrade='3';
+document.querySelectorAll('.login-grade-btn').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    loginGrade=this.dataset.g;
+    document.querySelectorAll('.login-grade-btn').forEach(function(b){
+      b.style.background='#fff'; b.style.color='#555'; b.style.borderColor='#ddd';
+    });
+    this.style.background='#185FA5'; this.style.color='#fff'; this.style.borderColor='#185FA5';
   });
 });
 document.querySelectorAll('.mode-card').forEach(function(card){
@@ -513,19 +539,31 @@ var testState=null,testTimer=null;
 function renderTest100Start(el){
   if(testState&&!testState.finished){renderTest();return;}
   var gnames={'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
-  // 級選択フェーズかレベル選択フェーズかを管理
+
+  // 合格記録を読み込む
+  var passes=JSON.parse(localStorage.getItem('eiken_passes')||'{}');
+
   if(!window._test100Grade){
-    // 級選択画面
-    var html='<div style="text-align:center;padding:12px 0 8px">';
-    html+='<div style="font-size:32px;margin-bottom:8px">⏱️</div>';
-    html+='<div style="font-size:18px;font-weight:700;color:#111;margin-bottom:4px">100問テスト</div>';
-    html+='<div style="font-size:13px;color:#888;margin-bottom:16px">8分間・4択形式</div>';
-    html+='<div style="font-size:12px;font-weight:600;color:#555;margin-bottom:8px;text-align:left">①　級を選ぶ</div>';
+    // 級選択画面 + スタンプカード
+    var html='<div style="text-align:center;padding:8px 0 4px">';
+    html+='<div style="font-size:28px;margin-bottom:6px">⏱️</div>';
+    html+='<div style="font-size:16px;font-weight:700;color:#111;margin-bottom:2px">100問テスト</div>';
+    html+='<div style="font-size:12px;color:#888;margin-bottom:12px">8分間・4択 ／ 95点以上で合格</div>';
+    html+='<div style="font-size:11px;font-weight:600;color:#555;margin-bottom:6px;text-align:left">① 級を選ぶ</div>';
     html+='<div class="test-grade-grid">';
     ['5','4','3','p2','2','p1'].forEach(function(g){
-      html+='<button class="tg-btn" data-g="'+g+'">'+gnames[g]+'</button>';
+      // その級に1つでも合格があるか
+      var hasPass=Object.keys(passes).some(function(k){return k.indexOf('pass_'+g+'_')===0;});
+      html+='<button class="tg-btn" data-g="'+g+'" style="position:relative">';
+      html+=gnames[g];
+      if(hasPass) html+='<span style="position:absolute;top:2px;right:4px;font-size:10px;color:#c00">✔</span>';
+      html+='</button>';
     });
     html+='</div></div>';
+
+    // スタンプカード全体
+    html+=renderStampCard(passes,gnames);
+
     el.innerHTML=html;
     el.querySelectorAll('[data-g]').forEach(function(btn){
       btn.addEventListener('click',function(){
@@ -534,25 +572,33 @@ function renderTest100Start(el){
       });
     });
   } else {
-    // レベル選択画面
+    // レベル選択画面 + その級のスタンプ
     var g=window._test100Grade;
     var levels=LEVEL_MAP[g];
-    var html='<div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">';
+    var html='<div style="margin-bottom:10px;display:flex;align-items:center;gap:8px">';
     html+='<button id="back-grade" style="font-size:12px;padding:4px 12px;border:1px solid #ddd;border-radius:20px;background:#fff;color:#888;cursor:pointer">← 級選択に戻る</button>';
     html+='<span style="font-size:14px;font-weight:600;color:#111">'+gnames[g]+'</span>';
     html+='</div>';
-    html+='<div style="font-size:12px;font-weight:600;color:#555;margin-bottom:8px">②　レベルを選ぶ</div>';
+    html+='<div style="font-size:11px;font-weight:600;color:#555;margin-bottom:6px">② レベルを選ぶ</div>';
     html+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">';
     levels.forEach(function(range,i){
       var lv=i+1;
       var count=range[1]-range[0];
-      html+='<button class="tg-btn" data-lv="'+lv+'" style="padding:10px 4px">';
+      var passKey='pass_'+g+'_Lv.'+lv;
+      var isPassed=!!passes[passKey];
+      html+='<button class="tg-btn" data-lv="'+lv+'" style="padding:10px 4px;position:relative;'+(isPassed?'border-color:#c00;':'')+'\">';
+      if(isPassed) html+='<span style="position:absolute;top:2px;right:4px;font-size:10px;color:#c00;font-weight:700">✔</span>';
       html+='<div style="font-weight:700">Lv.'+lv+'</div>';
       html+='<div style="font-size:11px;color:#aaa;margin-top:2px">'+count+'語</div>';
+      if(isPassed) html+='<div style="font-size:10px;color:#c00;margin-top:1px">合格 '+passes[passKey].score+'点</div>';
       html+='</button>';
     });
     html+='</div>';
-    html+='<button class="tg-btn" id="test-all-lv" style="width:100%;margin-top:2px">';
+    // 全レベルの合格スタンプ確認
+    var passAllKey='pass_'+g+'_全レベル';
+    var isPassedAll=!!passes[passAllKey];
+    html+='<button class="tg-btn" id="test-all-lv" style="width:100%;margin-top:2px;'+(isPassedAll?'border-color:#c00;':'')+'\">';
+    if(isPassedAll) html+='<span style="color:#c00;font-size:11px;font-weight:700;margin-right:4px">✔ 合格 '+passes[passAllKey].score+'点</span>';
     html+='<div style="font-weight:600">全レベルまとめて</div>';
     html+='<div style="font-size:11px;color:#aaa;margin-top:2px">'+VOCAB[g].length+'語から100問</div>';
     html+='</button>';
@@ -575,6 +621,41 @@ function renderTest100Start(el){
       startTestWithPool(g,VOCAB[g],'全レベル');
     });
   }
+}
+
+function makePassStampSVG(label,score,tilt){
+  var t=tilt||(-8+Math.random()*16); // -8〜+8度でランダムに傾く
+  return '<svg width="72" height="80" viewBox="0 0 72 80" style="display:inline-block;transform:rotate('+t+'deg)">'
+    +'<ellipse cx="36" cy="38" rx="32" ry="34" fill="none" stroke="#c00" stroke-width="3.5" stroke-dasharray="6 3" opacity="0.9"/>'
+    +'<text x="36" y="34" text-anchor="middle" font-size="18" font-weight="900" fill="#c00" font-family="serif" letter-spacing="2">合格</text>'
+    +'<text x="36" y="52" text-anchor="middle" font-size="9" font-weight="600" fill="#c00" font-family="sans-serif">'+label+'</text>'
+    +'<text x="36" y="63" text-anchor="middle" font-size="9" font-weight="700" fill="#c00" font-family="sans-serif">'+score+'点</text>'
+    +'</svg>';
+}
+
+function renderStampCard(passes,gnames){
+  var grades=['5','4','3','p2','2','p1'];
+  var hasAny=Object.keys(passes).length>0;
+  if(!hasAny) return '<div style="font-size:12px;color:#ccc;text-align:center;padding:16px 0">合格するとここにスタンプが押されます</div>';
+
+  var html='<div style="margin-top:14px;border-top:1px solid #eee;padding-top:12px">';
+  html+='<div style="font-size:12px;font-weight:600;color:#888;margin-bottom:10px">🏆 合格スタンプカード</div>';
+  grades.forEach(function(g){
+    var gradeKeys=Object.keys(passes).filter(function(k){return k.indexOf('pass_'+g+'_')===0;});
+    if(gradeKeys.length===0) return;
+    html+='<div style="margin-bottom:12px">';
+    html+='<div style="font-size:11px;color:#555;font-weight:600;margin-bottom:6px">'+gnames[g]+'</div>';
+    html+='<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">';
+    gradeKeys.forEach(function(k){
+      var p=passes[k];
+      var lb=p.label||k.replace('pass_'+g+'_','');
+      var tilt=-10+Math.floor(Math.random()*20);
+      html+=makePassStampSVG(lb,p.score,tilt);
+    });
+    html+='</div></div>';
+  });
+  html+='</div>';
+  return html;
 }
 
 function startTestWithPool(g,pool,label){
@@ -729,17 +810,58 @@ function showTestFeedback(ok,correct){
 function finishTest(){
   if(testTimer)clearInterval(testTimer);
   testState.finished=true;
-  if(window.db&&currentUser) saveLog('test100',testState.grade,testState.correct,100,testState.correct);
+  var sc=testState.correct;
+  var g=testState.grade, lb=testState.label;
+  if(window.db&&currentUser) saveLog('test100',g,sc,100,sc);
+  // 95点以上で合格記録を保存
+  if(sc>=95){
+    var passKey='pass_'+g+'_'+lb.replace(/\s/g,'_');
+    var passData={score:sc,grade:g,label:lb,date:Date.now()};
+    // localStorage
+    var passes=JSON.parse(localStorage.getItem('eiken_passes')||'{}');
+    if(!passes[passKey]||passes[passKey].score<sc) passes[passKey]=passData;
+    localStorage.setItem('eiken_passes',JSON.stringify(passes));
+    // Firestore
+    if(window.db&&currentUser){
+      var update={};
+      update['pass_'+passKey]=JSON.stringify(passData);
+      db.collection('users').doc(currentUser.uid).set(update,{merge:true}).catch(function(e){console.warn(e);});
+    }
+  }
   renderTestResult();
 }
+
 function renderTestResult(){
   var el=document.getElementById('content-area');
   var correct=testState.correct,wrong=testState.wrong,total=testState.current;
   var pct=Math.round(correct/100*100);
   var used=480-testState.timeLeft,um=Math.floor(used/60),us=used%60;
-  var html='<div style="font-size:13px;color:#888;text-align:center;margin-bottom:4px">テスト結果</div>';
-  html+='<div class="result-score-big">'+correct+'<span style="font-size:20px;font-weight:400;color:#888"> / 100</span></div>';
-  html+='<div class="result-label">正解率 '+pct+'%　｜　使用時間 '+um+'分'+us+'秒</div>';
+  var passed=correct>=95;
+
+  // 点数帯別メッセージ
+  var msg,msgColor;
+  if(correct>=95){msg='合格！おめでとう！🎉';msgColor='#c00';}
+  else if(correct>=80){msg='惜しい！次は必ず合格するんじゃ！';msgColor='#BA7517';}
+  else if(correct>=60){msg='もう少し！精進せえよ！';msgColor='#e85d00';}
+  else if(correct>=50){msg='甘い！鍛錬が足りとらん！';msgColor='#c05000';}
+  else{msg='不合格！基本がなっちょらん！';msgColor='#A32D2D';}
+
+  var html='<div style="font-size:13px;color:#888;text-align:center;margin-bottom:4px">テスト結果　'+(testState.label||'')+'</div>';
+
+  // 合格スタンプ（SVG手書き風）
+  if(passed){
+    html+='<div id="stamp-wrap" style="text-align:center;margin-bottom:8px">';
+    html+='<svg id="pass-stamp" width="160" height="170" viewBox="0 0 160 170" style="display:inline-block;opacity:0;transform:scale(2) rotate(-12deg);transition:opacity .45s,transform .45s">';
+    html+='<ellipse cx="80" cy="82" rx="72" ry="74" fill="none" stroke="#c00" stroke-width="7" stroke-dasharray="14 6" opacity="0.92"/>';
+    html+='<text x="80" y="72" text-anchor="middle" font-size="42" font-weight="900" fill="#c00" font-family="serif" letter-spacing="4">合格</text>';
+    html+='<text x="80" y="108" text-anchor="middle" font-size="16" font-weight="700" fill="#c00" font-family="sans-serif">'+testState.label+'</text>';
+    html+='<text x="80" y="128" text-anchor="middle" font-size="15" font-weight="700" fill="#c00" font-family="sans-serif">'+correct+'点</text>';
+    html+='</svg></div>';
+  }
+
+  html+='<div class="result-score-big" style="color:'+(passed?'#c00':'#185FA5')+'">'+correct+'<span style="font-size:20px;font-weight:400;color:#888"> / 100</span></div>';
+  html+='<div class="result-label">'+msg+'</div>';
+  html+='<div style="font-size:12px;color:#aaa;text-align:center;margin-bottom:8px">使用時間 '+um+'分'+us+'秒</div>';
   html+='<div class="result-stats">';
   html+='<div class="result-stat"><div class="result-stat-num" style="color:#3B6D11">'+correct+'</div><div class="result-stat-label">正解</div></div>';
   html+='<div class="result-stat"><div class="result-stat-num" style="color:#A32D2D">'+wrong.length+'</div><div class="result-stat-label">不正解</div></div>';
@@ -750,15 +872,186 @@ function renderTestResult(){
     html+='<div class="wrong-list">';
     wrong.forEach(function(w){html+='<div class="wrong-item"><span class="wrong-word">'+w.word+'</span><span class="wrong-meaning">'+w.correct+'</span></div>';});
     html+='</div>';
-  }else{
-    html+='<div style="text-align:center;color:#3B6D11;padding:12px">全問正解！すごい！</div>';
+  }else if(correct===100){
+    html+='<div style="text-align:center;color:#3B6D11;padding:12px;font-weight:600">全問正解！！パーフェクト！</div>';
   }
+  html+='<div id="baseball-wrap" style="width:100%;text-align:center;margin:8px 0 4px"></div>';
   html+='<button class="next-btn" style="background:#e85d00;margin-top:14px" id="retry-btn">もう一度テストを受ける</button>';
   el.innerHTML=html;
+
+  // スタンプアニメーション
+  if(passed){
+    setTimeout(function(){
+      var stamp=document.getElementById('pass-stamp');
+      if(stamp){stamp.style.opacity='1';stamp.style.transform='scale(1) rotate(-8deg)';}
+    },200);
+  }
+
+  // 野球アニメーション描画
+  renderBaseballAnim(document.getElementById('baseball-wrap'), correct);
+
   document.getElementById('retry-btn').addEventListener('click',function(){testState=null;renderTest100Start(el);});
 }
 
-var _mistakeReviewState = null;
+function renderBaseballAnim(wrap, score){
+  // ハゲおやじSVGアニメーション（4パターン）
+  var W=320, H=220;
+  var svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('width','100%');
+  svg.setAttribute('viewBox','0 0 '+W+' '+H);
+  svg.style.maxWidth='360px';
+
+  function el(tag,a){var e=document.createElementNS('http://www.w3.org/2000/svg',tag);for(var k in a)e.setAttribute(k,a[k]);return e;}
+  // 背景
+  var bg=el('rect',{x:0,y:0,width:W,height:H,fill:score>=95?'#e8f5e9':score>=80?'#fff3e0':score>=60?'#fff8e1':'#fce4ec',rx:12});
+  svg.appendChild(bg);
+
+  // グラウンド（ダイヤモンド）
+  var gy=H-40;
+  svg.appendChild(el('ellipse',{cx:W/2,cy:gy+8,rx:110,ry:16,fill:'#8d6e63',opacity:'.35'}));
+  svg.appendChild(el('rect',{x:W/2-80,y:gy-8,width:160,height:16,rx:4,fill:'#a5d6a7',opacity:'.5'}));
+  // ベースライン
+  if(score>=80&&score<95){
+    svg.appendChild(el('line',{x1:W/2-80,y1:gy,x2:W/2+80,y2:gy,stroke:'#795548','stroke-width':2,'stroke-dasharray':'6 4',opacity:'.6'}));
+    // ベース（一塁）
+    svg.appendChild(el('rect',{x:W/2+55,y:gy-14,width:18,height:12,rx:2,fill:'white',stroke:'#795548','stroke-width':1.5}));
+  }
+
+  // ハゲおやじ描画関数（x=体中心, y=足元）
+  function drawOji(g, bx, by, anim){
+    // 影
+    g.appendChild(el('ellipse',{cx:bx,cy:by+2,rx:18,ry:6,fill:'rgba(0,0,0,.18)'}));
+    // 足（アニメ付き）
+    var leg1=el('path',{d:'M'+(bx-8)+','+(by-10)+' L'+(bx-12)+','+by,stroke:'#37474f','stroke-width':5,'stroke-linecap':'round',fill:'none'});
+    var leg2=el('path',{d:'M'+(bx+8)+','+(by-10)+' L'+(bx+12)+','+by,stroke:'#37474f','stroke-width':5,'stroke-linecap':'round',fill:'none'});
+    if(anim==='slide'){
+      // ヘッドスライディング：横に伸びた姿勢
+      leg1.setAttribute('d','M'+(bx-20)+','+(by-5)+' L'+(bx-30)+','+by);
+      leg2.setAttribute('d','M'+(bx)+','+(by-5)+' L'+(bx+10)+','+by);
+    }
+    g.appendChild(leg1); g.appendChild(leg2);
+    // 体
+    var bodyColor=anim==='slide'?'#1565c0':'#185FA5';
+    if(anim==='slide'){
+      // 横向き体
+      g.appendChild(el('ellipse',{cx:bx-10,cy:by-22,rx:22,ry:12,fill:bodyColor,transform:'rotate(-30,'+(bx-10)+','+(by-22)+')'}));
+    } else {
+      g.appendChild(el('rect',{x:bx-12,y:by-38,width:24,height:28,rx:6,fill:bodyColor}));
+    }
+    // 腕 + バット
+    if(anim==='swing'||anim==='homerun'||anim==='foul'||anim==='strikeout'){
+      // バット（スイング前 or 後）
+      var batAngle=anim==='homerun'?-50:anim==='foul'?-20:anim==='strikeout'?60:30;
+      var batX=bx+15, batY=by-32;
+      var batLen=45;
+      var batRad=batAngle*Math.PI/180;
+      var batTX=batX+Math.cos(batRad)*batLen, batTY=batY+Math.sin(batRad)*batLen;
+      g.appendChild(el('line',{x1:batX,y1:batY,x2:batTX,y2:batTY,stroke:'#4e342e','stroke-width':5,'stroke-linecap':'round'}));
+      g.appendChild(el('circle',{cx:batTX,cy:batTY,r:6,fill:'#8d5524'}));
+    }
+    // 頭（ハゲ）
+    var headY=anim==='slide'?by-42:by-55;
+    var headX=anim==='slide'?bx-18:bx;
+    g.appendChild(el('ellipse',{cx:headX,cy:headY,rx:16,ry:18,fill:'#fce8c0',stroke:'#c89040','stroke-width':1.5}));
+    // 光沢（ハゲ感）
+    g.appendChild(el('ellipse',{cx:headX-4,cy:headY-6,rx:6,ry:4,fill:'white',opacity:'.4',transform:'rotate(-20,'+(headX-4)+','+(headY-6)+')'}));
+    // 目
+    var eyeY=headY-2;
+    g.appendChild(el('circle',{cx:headX-6,cy:eyeY,r:2.5,fill:'#212121'}));
+    g.appendChild(el('circle',{cx:headX+6,cy:eyeY,r:2.5,fill:'#212121'}));
+    // 口（アニメで変化）
+    if(anim==='homerun'||anim==='swing'){
+      // 大笑い
+      g.appendChild(el('path',{d:'M'+(headX-7)+','+(headY+6)+' Q'+headX+','+(headY+14)+' '+(headX+7)+','+(headY+6),fill:'#5a1e08',stroke:'none'}));
+      g.appendChild(el('rect',{x:headX-5,y:headY+7,width:10,height:5,rx:2,fill:'white'}));
+    } else if(anim==='strikeout'){
+      // 泣き顔
+      g.appendChild(el('path',{d:'M'+(headX-6)+','+(headY+10)+' Q'+headX+','+(headY+5)+' '+(headX+6)+','+(headY+10),stroke:'#5a1e08','stroke-width':2,fill:'none'}));
+    } else {
+      // 普通
+      g.appendChild(el('path',{d:'M'+(headX-5)+','+(headY+8)+' Q'+headX+','+(headY+13)+' '+(headX+5)+','+(headY+8),stroke:'#5a1e08','stroke-width':2,fill:'none','stroke-linecap':'round'}));
+    }
+    // ヘルメット
+    g.appendChild(el('path',{d:'M'+(headX-16)+','+(headY-5)+' Q'+(headX-10)+','+(headY-26)+' '+headX+','+(headY-26)+' Q'+(headX+16)+','+(headY-26)+' '+(headX+16)+','+(headY-5),fill:'#1a1a1a'}));
+    if(anim!=='slide') g.appendChild(el('rect',{x:headX-18,y:headY-7,width:6,height:5,rx:1,fill:'#1a1a1a'}));
+  }
+
+  var g=el('g',{});
+
+  if(score>=95){
+    // ホームラン：打った後ガッツポーズ、ボールが飛んでいく
+    drawOji(g, 110, gy, 'homerun');
+    // ボール（飛んでいく）
+    var ball=el('circle',{cx:220,cy:gy-80,r:10,fill:'white',stroke:'#bdbdbd','stroke-width':1.5});
+    g.appendChild(ball);
+    // 縫い目
+    g.appendChild(el('path',{d:'M215,gy-83 Q220,gy-78 225,gy-83'.replace(/gy/g,'').replace('gy-',String(gy-)),stroke:'#e53935','stroke-width':1.5,fill:'none'}));
+    g.appendChild(el('path',{d:'M215,'+(gy-77)+' Q220,'+(gy-82)+' 225,'+(gy-77),stroke:'#e53935','stroke-width':1.5,fill:'none'}));
+    // キラキラ
+    [[260,gy-120],[240,gy-100],[280,gy-90]].forEach(function(p){
+      g.appendChild(el('text',{x:p[0],y:p[1],'font-size':16,fill:'#FFD700','text-anchor':'middle'})).textContent='⭐';
+    });
+    // 軌跡
+    g.appendChild(el('path',{d:'M130,'+(gy-40)+' Q200,'+(gy-130)+' 270,'+(gy-90),stroke:'#FFD700','stroke-width':2,'stroke-dasharray':'6 4',fill:'none',opacity:'.7'}));
+    // ガッツポーズ（腕を上げる）
+    g.appendChild(el('line',{x1:110,y1:gy-42,x2:90,y2:gy-80,stroke:'#185FA5','stroke-width':5,'stroke-linecap':'round'}));
+    g.appendChild(el('line',{x1:110,y1:gy-42,x2:130,y2:gy-60,stroke:'#185FA5','stroke-width':5,'stroke-linecap':'round'}));
+    g.appendChild(el('text',{x:W/2+30,y:30,'font-size':22,'font-weight':'bold',fill:'#c00','text-anchor':'middle'})).textContent='ホームラン！';
+
+  } else if(score>=80){
+    // ヘッドスライディングするもアウト
+    drawOji(g, 140, gy, 'slide');
+    // 審判（右）
+    g.appendChild(el('circle',{cx:250,cy:gy-60,r:14,fill:'#263238'}));
+    g.appendChild(el('ellipse',{cx:250,cy:gy-45,rx:12,ry:16,fill:'#263238'}));
+    // 審判のアウトポーズ（腕を上げる）
+    g.appendChild(el('line',{x1:250,y1:gy-52,x2:225,y2:gy-75,stroke:'#263238','stroke-width':5,'stroke-linecap':'round'}));
+    g.appendChild(el('line',{x1:250,y1:gy-52,x2:275,y2:gy-75,stroke:'#263238','stroke-width':5,'stroke-linecap':'round'}));
+    // SAFE!じゃなくてOUT!
+    g.appendChild(el('text',{x:255,y:gy-95,'font-size':20,'font-weight':'bold',fill:'#c00','text-anchor':'middle'})).textContent='アウト！';
+    g.appendChild(el('text',{x:255,y:gy-78,'font-size':12,fill:'#888','text-anchor':'middle'})).textContent='あと一歩…';
+    // ベースに手が届かない（惜しい感）
+    g.appendChild(el('path',{d:'M'+(140+28)+','+(gy-10)+' L'+(140+55)+','+(gy-10),stroke:'#e53935','stroke-width':4,'stroke-linecap':'round',opacity:'.6','stroke-dasharray':'4 3'}));
+
+  } else if(score>=60){
+    // フライを打ち上げてアウト
+    drawOji(g, 90, gy, 'foul');
+    // ボール（高く上がる）
+    g.appendChild(el('circle',{cx:160,cy:gy-120,r:10,fill:'white',stroke:'#bdbdbd','stroke-width':1.5}));
+    g.appendChild(el('path',{d:'M156,'+(gy-123)+' Q160,'+(gy-118)+' 164,'+(gy-123),stroke:'#e53935','stroke-width':1.5,fill:'none'}));
+    // 軌跡（上に上がって落ちてくる）
+    g.appendChild(el('path',{d:'M110,'+(gy-35)+' Q155,'+(gy-140)+' 160,'+(gy-120),stroke:'#888','stroke-width':1.5,'stroke-dasharray':'5 3',fill:'none',opacity:'.6'}));
+    // 守備選手（捕球態勢）
+    g.appendChild(el('circle',{cx:230,cy:gy-55,r:12,fill:'#fce8c0',stroke:'#c89040','stroke-width':1.5}));
+    g.appendChild(el('ellipse',{cx:230,cy:gy-40,rx:12,ry:15,fill:'#185FA5'}));
+    g.appendChild(el('line',{x1:230,y1:gy-45,x2:215,y2:gy-75,stroke:'#185FA5','stroke-width':5,'stroke-linecap':'round'}));
+    // グローブ
+    g.appendChild(el('circle',{cx:213,cy:gy-76,r:9,fill:'#8d5524'}));
+    g.appendChild(el('text',{x:W/2+30,y:25,'font-size':16,'font-weight':'bold',fill:'#e85d00','text-anchor':'middle'})).textContent='フライアウト！';
+
+  } else {
+    // 空振り三振
+    drawOji(g, 140, gy, 'strikeout');
+    // ボール（通り過ぎる）
+    g.appendChild(el('circle',{cx:240,cy:gy-38,r:10,fill:'white',stroke:'#bdbdbd','stroke-width':1.5}));
+    g.appendChild(el('path',{d:'M236,'+(gy-41)+' Q240,'+(gy-36)+' 244,'+(gy-41),stroke:'#e53935','stroke-width':1.5,fill:'none'}));
+    // スピードライン
+    [gy-50,gy-38,gy-26].forEach(function(y){
+      g.appendChild(el('line',{x1:200,y1:y,x2:255,y2:y,stroke:'#888','stroke-width':1.5,opacity:'.5'}));
+    });
+    // キャッチャー（後ろでボールを受ける）
+    g.appendChild(el('circle',{cx:270,cy:gy-52,r:14,fill:'#263238'}));
+    g.appendChild(el('ellipse',{cx:270,cy:gy-36,rx:13,ry:16,fill:'#263238'}));
+    g.appendChild(el('line',{x1:270,y1:gy-45,x2:260,y2:gy-70,stroke:'#263238','stroke-width':5,'stroke-linecap':'round'}));
+    g.appendChild(el('circle',{cx:258,cy:gy-71,r:9,fill:'#8d5524'}));
+    // 三振マーク
+    g.appendChild(el('text',{x:85,y:30,'font-size':28,'font-weight':'bold',fill:'#c00','text-anchor':'middle'})).textContent='K';
+    g.appendChild(el('text',{x:85,y:52,'font-size':12,fill:'#888','text-anchor':'middle'})).textContent='三振…');
+  }
+
+  svg.appendChild(g);
+  wrap.appendChild(svg);
+}
 
 function renderMistakes(el){
   var mistakes = JSON.parse(localStorage.getItem('eiken_mistakes')||'[]');
@@ -1208,7 +1501,7 @@ function renderRanking(el){
 function renderStats(el){
   var pct=score.total?Math.round(score.correct/score.total*100):0;
   var gradeNames={'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
-  var counts={'5':680,'4':800,'3':1100,'p2':1000,'2':1800,'p1':3000};
+  var counts={'5':VOCAB['5'].length,'4':VOCAB['4'].length,'3':VOCAB['3'].length,'p2':VOCAB['p2'].length,'2':VOCAB['2'].length,'p1':VOCAB['p1'].length};
   var s=getShuffled(grade);
   var done=Math.min(s.pos,counts[grade]);
   var progPct=Math.round(done/counts[grade]*100);
@@ -1596,6 +1889,12 @@ document.getElementById('login-btn').addEventListener('click', function(){
     currentUser={uid:sid,name:name};
     localStorage.setItem('eiken_user',JSON.stringify({uid:sid,name:name,ts:Date.now()}));
     restoreProgressFromCloud(snap.data()||{});
+    // ログイン画面で選んだ級を適用
+    grade=loginGrade;
+    document.querySelectorAll('.grade-btn').forEach(function(b){
+      b.classList.remove('active');
+      if(b.dataset.grade===grade) b.classList.add('active');
+    });
     document.getElementById('login-overlay').style.display='none';
     document.getElementById('session-score').textContent=name+' さん | 正解:0/0';
     document.getElementById('logout-btn').style.display='block';
@@ -1702,6 +2001,20 @@ function restoreProgressFromCloud(data){
       Object.keys(prog).forEach(function(k){ shuffledIdx[k]=prog[k]; });
     }catch(e){console.warn('単語進捗復元エラー',e);}
   }
+  // 合格記録復元
+  try{
+    var localPasses=JSON.parse(localStorage.getItem('eiken_passes')||'{}');
+    Object.keys(data).forEach(function(k){
+      if(k.indexOf('pass_pass_')===0||k.indexOf('pass_')===0){
+        var passKey=k.replace(/^pass_/,'');
+        try{
+          var p=JSON.parse(data[k]);
+          if(!localPasses[passKey]||p.score>localPasses[passKey].score) localPasses[passKey]=p;
+        }catch(e){}
+      }
+    });
+    localStorage.setItem('eiken_passes',JSON.stringify(localPasses));
+  }catch(e){console.warn('合格記録復元エラー',e);}
 }
 </script>
 </body>
