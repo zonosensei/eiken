@@ -403,6 +403,9 @@ function renderVocabQuestion(el){
 
   el.innerHTML = html;
 
+  // 問題表示時に自動発音
+  setTimeout(function(){ speakWord(q.word); }, 300);
+
   el.querySelectorAll('.choice-btn').forEach(function(btn){
     btn.addEventListener('click',function(){
       if(answered) return;
@@ -442,7 +445,7 @@ function checkVocab(btn, correct, item, el){
   fb.style.display = 'block'; fb.className = 'feedback '+(ok?'correct':'wrong');
   fb.textContent = ok ? '正解！' : '不正解… 正解は「'+correct+'」';
   if(ok){
-    // 正解時は1秒後に自動で次へ
+    playCorrect();
     setTimeout(function(){
       vocabSet.current++;
       if(vocabSet.current >= SET_SIZE){
@@ -452,7 +455,7 @@ function checkVocab(btn, correct, item, el){
       }
     }, 900);
   } else {
-    // 不正解時はボタンを表示して待つ
+    playWrong();
     document.getElementById('vnext').style.display = 'block';
   }
 }
@@ -681,6 +684,8 @@ function renderTest(){
   });
   html+='</div>';
   el.innerHTML=html;
+  // 問題表示時に自動発音
+  setTimeout(function(){ speakWord(q[0]); }, 200);
   el.querySelectorAll('.test-choice').forEach(function(btn){
     btn.addEventListener('click',function(){answerTest(this,correct);});
   });
@@ -960,6 +965,15 @@ function startMistakeReview(el, pool){
   });
 }
 
+// まちがいノートの保存（localStorage + Firestore）
+function saveMistakesToCloud(mistakes){
+  if(!window.db||!currentUser) return;
+  db.collection('users').doc(currentUser.uid).set(
+    {mistakes: JSON.stringify(mistakes), mistakesUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()},
+    {merge:true}
+  ).catch(function(e){console.warn('まちがいノート保存エラー',e);});
+}
+
 function addMistake(word, meaning, g){
   var mistakes = JSON.parse(localStorage.getItem('eiken_mistakes')||'[]');
   var found = null;
@@ -972,6 +986,7 @@ function addMistake(word, meaning, g){
   }
   if(mistakes.length>200) mistakes=mistakes.slice(-200);
   localStorage.setItem('eiken_mistakes', JSON.stringify(mistakes));
+  saveMistakesToCloud(mistakes);
 }
 
 function removeMistake(word, g){
@@ -980,12 +995,12 @@ function removeMistake(word, g){
   for(var i=0;i<mistakes.length;i++){if(mistakes[i].word===word&&mistakes[i].grade===g){found=mistakes[i];break;}}
   if(found){
     found.correct = (found.correct||0) + 1;
-    // 正解3回でリストから卒業
     if(found.correct >= 3){
       mistakes = mistakes.filter(function(m){return !(m.word===word&&m.grade===g);});
     }
   }
   localStorage.setItem('eiken_mistakes', JSON.stringify(mistakes));
+  saveMistakesToCloud(mistakes);
 }
 
 function renderWordList(el){
@@ -1572,6 +1587,7 @@ document.getElementById('login-btn').addEventListener('click', function(){
     if(!snap.exists){ db.collection('users').doc(sid).set({name:name,grade:'3',createdAt:firebase.firestore.FieldValue.serverTimestamp()}); }
     currentUser={uid:sid,name:name};
     localStorage.setItem('eiken_user',JSON.stringify({uid:sid,name:name,ts:Date.now()}));
+    restoreProgressFromCloud(snap.data()||{});
     document.getElementById('login-overlay').style.display='none';
     document.getElementById('session-score').textContent=name+' さん | 正解:0/0';
     document.getElementById('logout-btn').style.display='block';
@@ -1581,6 +1597,14 @@ document.getElementById('login-sid').addEventListener('keydown',function(e){
   if(e.key==='Enter') document.getElementById('login-btn').click();
 });
 
+function saveVocabProgressToCloud(){
+  if(!window.db||!currentUser) return;
+  db.collection('users').doc(currentUser.uid).set(
+    {vocabProgress: JSON.stringify(shuffledIdx), vocabProgressUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()},
+    {merge:true}
+  ).catch(function(e){console.warn('単語進捗保存エラー',e);});
+}
+
 function saveLog(mode,grade,correct,total,score){
   if(!currentUser||!db)return;
   db.collection('users').doc(currentUser.uid).collection('logs').add({
@@ -1588,6 +1612,8 @@ function saveLog(mode,grade,correct,total,score){
     timestamp:firebase.firestore.FieldValue.serverTimestamp()
   }).catch(function(e){console.warn('保存エラー',e);});
   db.collection('users').doc(currentUser.uid).set({grade:grade,lastActive:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+  // 単語進捗もクラウドに保存
+  saveVocabProgressToCloud();
 }
 
 function doLogout(){
@@ -1618,10 +1644,10 @@ function doLogout(){
         if(!snap.exists){ db.collection('users').doc(sid).set({name:name,grade:'3',createdAt:firebase.firestore.FieldValue.serverTimestamp()}); }
         currentUser={uid:sid,name:name};
         localStorage.setItem('eiken_user',JSON.stringify({uid:sid,name:name,ts:Date.now()}));
+        restoreProgressFromCloud(snap.data()||{});
         document.getElementById('login-overlay').style.display='none';
         document.getElementById('session-score').textContent=name+' さん | 正解:0/0';
         document.getElementById('logout-btn').style.display='block';
-        // URLからsidパラメータを消す（戻るボタン対策）
         window.history.replaceState({},'',window.location.pathname);
       }).catch(function(){});
       return;
@@ -1632,15 +1658,43 @@ function doLogout(){
   if(!saved) return;
   try{
     var u = JSON.parse(saved);
-    var hours24 = 24*60*60*1000;
+    var hours24 = 24*60*60*1000*36500; // 100年分 = 事実上無期限
     if(Date.now()-u.ts < hours24 && u.uid && u.name){
       currentUser = {uid:u.uid, name:u.name};
+      // Firestoreからも進捗を復元
+      db.collection('users').doc(u.uid).get().then(function(snap){
+        restoreProgressFromCloud(snap.data()||{});
+      }).catch(function(){});
       document.getElementById('login-overlay').style.display='none';
       document.getElementById('session-score').textContent=u.name+' さん | 正解:0/0';
       document.getElementById('logout-btn').style.display='block';
     }
   }catch(e){ localStorage.removeItem('eiken_user'); }
 })();
+
+function restoreProgressFromCloud(data){
+  // まちがいノート復元
+  if(data.mistakes){
+    try{
+      var cloudMistakes=JSON.parse(data.mistakes);
+      var localMistakes=JSON.parse(localStorage.getItem('eiken_mistakes')||'[]');
+      var merged={};
+      localMistakes.forEach(function(m){merged[m.grade+'_'+m.word]=m;});
+      cloudMistakes.forEach(function(m){
+        var key=m.grade+'_'+m.word;
+        if(!merged[key]||(m.date||0)>(merged[key].date||0)) merged[key]=m;
+      });
+      localStorage.setItem('eiken_mistakes',JSON.stringify(Object.values(merged)));
+    }catch(e){console.warn('まちがいノート復元エラー',e);}
+  }
+  // 単語進捗復元
+  if(data.vocabProgress){
+    try{
+      var prog=JSON.parse(data.vocabProgress);
+      Object.keys(prog).forEach(function(k){ shuffledIdx[k]=prog[k]; });
+    }catch(e){console.warn('単語進捗復元エラー',e);}
+  }
+}
 </script>
 </body>
 </html>
