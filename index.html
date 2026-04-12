@@ -933,19 +933,27 @@ function startMistakeReview(el, pool){
       fb.className='feedback '+(ok?'correct':'wrong');
       if(ok){
         fb.textContent='正解！';
+        playCorrect();
         removeMistake(item.word, g);
-        // pool更新
         var updated = JSON.parse(localStorage.getItem('eiken_mistakes')||'[]');
         pool = updated.sort(function(a,b){return (b.weak||1)-(a.weak||1);}).slice(0,30);
-        if(ok){score.correct++;} score.total++;
+        score.correct++; score.total++;
         updateScore();
+        // 正解時は自動で次へ
+        setTimeout(function(){
+          var latest = JSON.parse(localStorage.getItem('eiken_mistakes')||'[]');
+          if(latest.length===0){ window._mistakesTab='list'; renderMistakes(el); return; }
+          var newPool = latest.sort(function(a,b){return (b.weak||1)-(a.weak||1);}).slice(0,30);
+          startMistakeReview(el, newPool);
+        }, 900);
       } else {
         fb.textContent='不正解… 正解は「'+correct+'」';
+        playWrong();
         addMistake(item.word, correct, g);
         score.total++;
         updateScore();
+        document.getElementById('rv-next').style.display='block';
       }
-      document.getElementById('rv-next').style.display='block';
     });
   });
 
