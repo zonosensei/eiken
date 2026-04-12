@@ -13,7 +13,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
 .header h1{font-size:20px;font-weight:600;color:#111}
 #session-score{font-size:13px;color:#666}
-.grade-selector{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px}
+.grade-selector{display:none;gap:6px;flex-wrap:wrap;margin-bottom:20px}
 .grade-btn{padding:6px 14px;border:1px solid #ddd;border-radius:20px;font-size:13px;cursor:pointer;background:#fff;color:#333;transition:all 0.15s}
 .grade-btn.active{background:#185FA5;color:#fff;border-color:#185FA5}
 .mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
@@ -985,7 +985,7 @@ function renderBaseballAnim(wrap, score){
     var ball=el('circle',{cx:220,cy:gy-80,r:10,fill:'white',stroke:'#bdbdbd','stroke-width':1.5});
     g.appendChild(ball);
     // 縫い目
-    g.appendChild(el('path',{d:'M215,gy-83 Q220,gy-78 225,gy-83'.replace(/gy/g,'').replace('gy-',String(gy-)),stroke:'#e53935','stroke-width':1.5,fill:'none'}));
+    g.appendChild(el('path',{d:'M215,'+(gy-83)+' Q220,'+(gy-78)+' 225,'+(gy-83),stroke:'#e53935','stroke-width':1.5,fill:'none'}));
     g.appendChild(el('path',{d:'M215,'+(gy-77)+' Q220,'+(gy-82)+' 225,'+(gy-77),stroke:'#e53935','stroke-width':1.5,fill:'none'}));
     // キラキラ
     [[260,gy-120],[240,gy-100],[280,gy-90]].forEach(function(p){
@@ -1046,7 +1046,7 @@ function renderBaseballAnim(wrap, score){
     g.appendChild(el('circle',{cx:258,cy:gy-71,r:9,fill:'#8d5524'}));
     // 三振マーク
     g.appendChild(el('text',{x:85,y:30,'font-size':28,'font-weight':'bold',fill:'#c00','text-anchor':'middle'})).textContent='K';
-    g.appendChild(el('text',{x:85,y:52,'font-size':12,fill:'#888','text-anchor':'middle'})).textContent='三振…');
+    g.appendChild(el('text',{x:85,y:52,'font-size':12,fill:'#888','text-anchor':'middle'})).textContent='三振…';
   }
 
   svg.appendChild(g);
