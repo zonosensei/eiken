@@ -3,7 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Z eiken</title>
+<title>Z-eiken</title>
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Z-eiken">
+<link rel="apple-touch-icon" href="icon-192.png">
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 <style>
@@ -474,6 +479,7 @@ function renderVocabQuestion(el){
     html += '<button class="choice-btn" data-choice="'+c.replace(/"/g,'&quot;')+'">'+c+'</button>';
   });
   html += '</div>';
+  html += '<button class="choice-btn" id="vdontknow" style="margin-top:4px;width:100%;grid-column:1/-1;background:#f5f5f5;color:#999;border-color:#e0e0e0;font-size:13px">分からない</button>';
   html += '<button class="next-btn" id="vnext" style="display:none">'+(setNo<SET_SIZE?'次の問題へ →':'結果を見る 🎉')+'</button>';
 
   el.innerHTML = html;
@@ -486,6 +492,22 @@ function renderVocabQuestion(el){
       if(answered) return;
       checkVocab(this, q.meaning, q.item, el);
     });
+  });
+  document.getElementById('vdontknow').addEventListener('click',function(){
+    if(answered) return; answered = true;
+    score.total++;
+    recordWordResult(q.item[0], grade, false);
+    addDailyResult(false);
+    vocabSet.wrongList.push({word:q.item[0], meaning:q.meaning});
+    addMistake(q.item[0], q.meaning, grade);
+    updateScore();
+    document.querySelectorAll('.choice-btn').forEach(function(b){b.classList.add('disabled');if(b.dataset.choice===q.meaning)b.classList.add('correct');});
+    this.disabled=true; this.style.opacity='0.4';
+    var fb=document.getElementById('vfb');
+    fb.style.display='block'; fb.className='feedback wrong';
+    fb.textContent='不正解… 正解は「'+q.meaning+'」';
+    playWrong();
+    document.getElementById('vnext').style.display='block';
   });
   document.getElementById('vnext').addEventListener('click',function(){
     vocabSet.current++;
@@ -793,11 +815,18 @@ function renderTest(){
     html+='<button class="test-choice" data-c="'+c.replace(/"/g,'&quot;')+'">'+c+'</button>';
   });
   html+='</div>';
+  html+='<button id="test-dontknow" style="margin-top:6px;width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:12px;background:#f5f5f5;color:#999;font-size:13px;cursor:pointer;font-weight:600">分からない</button>';
   el.innerHTML=html;
   // 問題表示時に自動発音
   setTimeout(function(){ speakWord(q[0]); }, 200);
   el.querySelectorAll('.test-choice').forEach(function(btn){
     btn.addEventListener('click',function(){answerTest(this,correct);});
+  });
+  document.getElementById('test-dontknow').addEventListener('click',function(){
+    if(testState.answered)return;
+    answerTest({dataset:{c:'__dontknow__'},classList:{add:function(){},contains:function(){return false;}}}, correct);
+    document.querySelectorAll('.test-choice').forEach(function(b){b.classList.add('disabled');if(b.dataset.c===correct)b.classList.add('correct');});
+    this.disabled=true; this.style.opacity='0.4';
   });
 }
 function answerTest(btn,correct){
@@ -1238,6 +1267,7 @@ function startMistakeReview(el, pool){
     html+='<button class="choice-btn" data-c="'+c.replace(/"/g,'&quot;')+'">'+c+'</button>';
   });
   html+='</div>';
+  html+='<button id="rv-dontknow" style="margin-top:4px;width:100%;padding:12px;border:1px solid #e0e0e0;border-radius:12px;background:#f5f5f5;color:#999;font-size:13px;cursor:pointer;font-weight:600">分からない</button>';
   html+='<button class="next-btn" id="rv-next" style="display:none">次の苦手単語へ →</button>';
 
   el.innerHTML=html;
@@ -1280,6 +1310,20 @@ function startMistakeReview(el, pool){
         document.getElementById('rv-next').style.display='block';
       }
     });
+  });
+
+  document.getElementById('rv-dontknow').addEventListener('click',function(){
+    if(_answered)return; _answered=true;
+    el.querySelectorAll('.choice-btn').forEach(function(b){b.classList.add('disabled');if(b.dataset.c===correct)b.classList.add('correct');});
+    this.disabled=true; this.style.opacity='0.4';
+    var fb=document.getElementById('rvfb');
+    fb.style.display='block'; fb.className='feedback wrong';
+    fb.textContent='不正解… 正解は「'+correct+'」';
+    playWrong();
+    addMistake(item.word, correct, g);
+    score.total++;
+    updateScore();
+    document.getElementById('rv-next').style.display='block';
   });
 
   document.getElementById('rv-next').addEventListener('click',function(){
@@ -1430,7 +1474,24 @@ function buildWordListHTML(words, query){
       +'</div>';
   }).join('');
 }
+// iOS消音モード対応: AudioContextを使ってspeechSynthesisを動かす
+var _audioCtxUnlocked = false;
+function unlockAudioContext(){
+  if(_audioCtxUnlocked) return;
+  try{
+    var ac = new(window.AudioContext||window.webkitAudioContext)();
+    var buf = ac.createBuffer(1,1,22050);
+    var src = ac.createBufferSource();
+    src.buffer = buf; src.connect(ac.destination); src.start(0);
+    ac.resume && ac.resume();
+    _audioCtxUnlocked = true;
+  }catch(e){}
+}
+document.addEventListener('touchstart', unlockAudioContext, {once:true, passive:true});
+document.addEventListener('click', unlockAudioContext, {once:true, passive:true});
+
 function speakWord(word){
+  unlockAudioContext();
   if(!window.speechSynthesis) return;
   var u=new SpeechSynthesisUtterance(word);
   u.lang='en-US'; u.rate=0.85;
@@ -1439,6 +1500,8 @@ function speakWord(word){
 }
 
 function renderRanking(el){
+  // TグループのIDセット（adminのみ表示、ランキングから除外）
+  var T_IDS = {"00108065":1,"00174535":1,"00170733":1,"00168431":1,"00167557":1,"00173415":1,"00138940":1,"00167540":1,"00138836":1,"00164776":1,"00109344":1,"00165801":1,"00166547":1,"00167196":1,"00145657":1,"00004380":1,"00129488":1,"00004388":1,"00016082":1,"00003786":1,"00016089":1,"00100719":1,"00147073":1,"00115882":1,"00130489":1,"00174260":1};
   el.innerHTML='<div style="font-size:14px;font-weight:600;margin-bottom:8px">🏆 ランキング</div><div style="text-align:center;color:#aaa;padding:32px 0;font-size:13px">読み込み中...</div>';
   if(!window.db){
     el.innerHTML='<div style="text-align:center;color:#aaa;padding:32px 0;font-size:13px">ログインするとランキングが見られます</div>';
@@ -1460,9 +1523,11 @@ function renderRanking(el){
           var weekCorrect=weekLogs.reduce(function(s,l){return s+(l.correct||0);},0);
           var weekTotal=weekLogs.reduce(function(s,l){return s+(l.total||0);},0);
           var weekRate=weekTotal>=10?Math.round(weekCorrect/weekTotal*100):null;
-          rankData.push({uid:uid,name:userData.name||'名無し',grade:userData.grade||'3',
-            bestScore:bestScore,weekCount:weekLogs.length,weekRate:weekRate,weekTotal:weekTotal,
-            isSelf:currentUser&&currentUser.uid===uid});
+          if(!T_IDS[uid]){
+            rankData.push({uid:uid,name:userData.name||'名無し',grade:userData.grade||'3',
+              bestScore:bestScore,weekCount:weekLogs.length,weekRate:weekRate,weekTotal:weekTotal,
+              isSelf:currentUser&&currentUser.uid===uid});
+          }
         });
       promises.push(p);
     });
@@ -1942,7 +2007,7 @@ firebase.initializeApp({
   appId: "1:369428206114:web:ec7d82d632609f2062707b"
 });
 var db = firebase.firestore();
-var STUDENTS = {"01900283": "釜萢 那柘", "01877631": "小林 隼大", "01919809": "髙野 詩歩", "01924454": "田原 圭翔", "01944129": "井上 漱木", "01948447": "田中 碧人", "01952205": "外山 陽翔", "01994388": "湯瀬 賢悟", "02005143": "成田 健真", "02011689": "戸塚 玲央", "02013578": "戸﨑 悠太", "02013577": "辻 一樹", "01927755": "加治 美海", "02014000": "中村 翔真", "02014363": "岡﨑 悠吾", "02016204": "野崎 志温", "02016203": "谷口 翔星", "02016557": "鹿島 颯太", "02017205": "淺賀 陸翔", "02017206": "那須 帆夏", "02017431": "沼上 稀乃花", "02018900": "平山 春斗", "01915990": "中間 美紅", "01924801": "竹内 陽馬", "01985706": "奥野 絢", "01986731": "大賀 咲", "01991804": "松下 陸玖", "01993412": "松宇 藍子", "02002853": "砂子 優", "02002612": "工藤 悠仁", "02006194": "瀧野 寛斗", "02009553": "堀辺 悠花", "02010692": "伊藤 杏", "02012147": "岡村 結斗", "02014364": "岡﨑 詩心", "02014379": "槇 颯太", "02016885": "安西 海翔", "02016886": "酒井 蒼空", "02018747": "村上 力斗", "01928127": "安形 駿矢", "01937656": "池田 宗多朗", "01952016": "若槻 柊太", "01956007": "外山 怜奈", "01993991": "橋口 栞奈", "01995191": "金城 柊平", "02005323": "鈴木 碧海", "02014002": "松茂良 空", "02018640": "池田 史実", "02018641": "井上 すみれこ", "01979883": "小笠原 凛", "01985707": "木村 朱里", "02018901": "相川 駿太", "00108065": "中薗 絢斗", "00174535": "井元 日向子", "00170733": "小笠原 蓮", "00168431": "川村 瑚々美", "00167557": "柴崎 翔", "00173415": "髙橋 ひなた", "00138940": "田邉 美香", "00167540": "矢澤 舞夏", "00138836": "渡部 千夏", "00164776": "大胡 桜太", "00109344": "青木 秀貴", "00165801": "佐藤 進太郎", "00166547": "中村 慧斗", "00167196": "広瀬 めぐ", "00145657": "山本 乙葉", "00004380": "浅香 光利", "00129488": "安孫子 遥", "00004388": "大谷 亮次", "00016082": "加藤 大輔", "00003786": "醍醐 秀和", "00016089": "龍 巡", "00100719": "田代 怜矢", "00147073": "坂神 優", "00115882": "山本 一輝", "00130489": "髙橋 悠並"};
+var STUDENTS = {"01900283": "釜萢 那柘", "01877631": "小林 隼大", "01919809": "髙野 詩歩", "01924454": "田原 圭翔", "01944129": "井上 漱木", "01948447": "田中 碧人", "01952205": "外山 陽翔", "01994388": "湯瀬 賢悟", "02005143": "成田 健真", "02011689": "戸塚 玲央", "02013578": "戸﨑 悠太", "02013577": "辻 一樹", "01927755": "加治 美海", "02014000": "中村 翔真", "02014363": "岡﨑 悠吾", "02016204": "野崎 志温", "02016203": "谷口 翔星", "02016557": "鹿島 颯太", "02017205": "淺賀 陸翔", "02017206": "那須 帆夏", "02017431": "沼上 稀乃花", "02018900": "平山 春斗", "01915990": "中間 美紅", "01924801": "竹内 陽馬", "01985706": "奥野 絢", "01986731": "大賀 咲", "01991804": "松下 陸玖", "01993412": "松宇 藍子", "02002853": "砂子 優", "02002612": "工藤 悠仁", "02006194": "瀧野 寛斗", "02009553": "堀辺 悠花", "02010692": "伊藤 杏", "02012147": "岡村 結斗", "02014364": "岡﨑 詩心", "02014379": "槇 颯太", "02016885": "安西 海翔", "02016886": "酒井 蒼空", "02018747": "村上 力斗", "01928127": "安形 駿矢", "01937656": "池田 宗多朗", "01952016": "若槻 柊太", "01956007": "外山 怜奈", "01993991": "橋口 栞奈", "01995191": "金城 柊平", "02005323": "鈴木 碧海", "02014002": "松茂良 空", "02018640": "池田 史実", "02018641": "井上 すみれこ", "01979883": "小笠原 凛", "01985707": "木村 朱里", "02018901": "相川 駿太", "00108065": "中薗 絢斗", "00174535": "井元 日向子", "00170733": "小笠原 蓮", "00168431": "川村 瑚々美", "00167557": "柴崎 翔", "00173415": "髙橋 ひなた", "00138940": "田邉 美香", "00167540": "矢澤 舞夏", "00138836": "渡部 千夏", "00164776": "大胡 桜太", "00109344": "青木 秀貴", "00165801": "佐藤 進太郎", "00166547": "中村 慧斗", "00167196": "広瀬 めぐ", "00145657": "山本 乙葉", "00004380": "浅香 光利", "00129488": "安孫子 遥", "00004388": "大谷 亮次", "00016082": "加藤 大輔", "00003786": "醍醐 秀和", "00016089": "龍 巡", "00100719": "田代 怜矢", "00147073": "坂神 優", "00115882": "山本 一輝", "00130489": "髙橋 悠並", "00174260": "北田 真唯"};
 var currentUser = null;
 
 document.getElementById('login-btn').addEventListener('click', function(){
