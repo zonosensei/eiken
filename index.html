@@ -2342,6 +2342,8 @@ function renderBattleGame(el, roomData){
   var grade = roomData.grade;
   battleState.grade = grade;
   battleState.answered = false;
+  // Store host id from room so submitBattleAnswer can use it
+  battleState.hostId = roomData.host;
 
   // Render game UI
   var html = '<div id="battle-game-wrap">';
@@ -2417,6 +2419,8 @@ function renderBattleGame(el, roomData){
               b.classList.add('disabled');
               if(b.textContent === q.answer) b.classList.add('correct');
             });
+            // Time's up - submit a non-answer so host can advance
+            submitBattleAnswer(roomId, false, '', q);
           }
         }
       }
@@ -2461,33 +2465,35 @@ function submitBattleAnswer(roomId, isCorrect, chosen, q){
   };
   if(isCorrect) updateData['players.'+battleState.myId+'.score'] = firebase.firestore.FieldValue.increment(scoreAdd);
   db.collection('battle_rooms').doc(roomId).update(updateData).then(function(){
-    // Only host advances the question
-    if(!battleState.isHost) return;
+    // After 3.5s, check if we should advance (any player can trigger this, Firestore transaction prevents double-advance)
     setTimeout(function(){
       db.collection('battle_rooms').doc(roomId).get().then(function(snap){
+        if(!snap.exists) return;
         var data = snap.data();
-        var q = data.currentQuestion;
+        if(data.status !== 'playing') return;
+        var cq = data.currentQuestion;
+        // Only advance if this is still the same question (prevent double-advance)
+        if(!cq || cq.qNum !== q.qNum) return;
         var players = data.players || {};
         var answers = data.answers || {};
-        // Check if all answered or time passed
-        var allAnswered = Object.keys(players).every(function(uid){ return !!answers[uid]; });
-        var elapsed = (Date.now() - q.startedAt) / 1000;
-        if(allAnswered || elapsed >= q.timeLimit + 1){
-          if(q.qNum >= q.totalQ){
-            // End game
-            db.collection('battle_rooms').doc(roomId).update({ status: 'finished' });
-          } else {
-            // Next question
-            var nextQ = makeBattleQuestion(battleState.grade);
-            db.collection('battle_rooms').doc(roomId).update({
-              currentQuestion: {
-                word: nextQ.word, answer: nextQ.answer, choices: nextQ.choices,
-                qNum: q.qNum+1, totalQ: q.totalQ,
-                startedAt: Date.now(), timeLimit: 8
-              },
-              answers: {}
-            });
-          }
+        var allAnswered = Object.keys(players).length > 0 &&
+          Object.keys(players).every(function(uid){ return !!answers[uid]; });
+        var elapsed = (Date.now() - cq.startedAt) / 1000;
+        if(!allAnswered && elapsed < cq.timeLimit + 1) return;
+        // Only the room host actually writes the next question (use Firestore host field)
+        if(data.host !== battleState.myId) return;
+        if(cq.qNum >= cq.totalQ){
+          db.collection('battle_rooms').doc(roomId).update({ status: 'finished' });
+        } else {
+          var nextQ = makeBattleQuestion(battleState.grade);
+          db.collection('battle_rooms').doc(roomId).update({
+            currentQuestion: {
+              word: nextQ.word, answer: nextQ.answer, choices: nextQ.choices,
+              qNum: cq.qNum+1, totalQ: cq.totalQ,
+              startedAt: Date.now(), timeLimit: 8
+            },
+            answers: {}
+          });
         }
       });
     }, 3500);
