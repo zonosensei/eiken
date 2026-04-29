@@ -35,6 +35,40 @@
   --radius-sm:8px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
+
+/* ===== THEMES ===== */
+/* 🌙 Dark */
+[data-theme="dark"]{
+  --bg:#111318;--app-bg:#1C1F26;--primary:#5B8CFF;--primary-light:#1A2340;
+  --text:#E8EAFE;--text2:#9A9DB8;--text3:#5A5D78;
+  --border:#2C2F3E;--border2:#363A50;
+  --correct:#26C6A0;--correct-bg:#0D2420;--wrong:#FF5252;--wrong-bg:#2A1010;
+  --card-shadow:0 1px 6px rgba(0,0,0,0.4);--card-shadow-hover:0 4px 20px rgba(0,0,0,0.5);
+}
+/* 🌊 Blue (Ocean) */
+[data-theme="blue"]{
+  --bg:#E8F4FD;--app-bg:#FFFFFF;--primary:#0077B6;--primary-light:#CCEEFF;
+  --text:#003559;--text2:#4A7599;--text3:#8EB8D5;
+  --border:#B3D9F5;--border2:#90C8EE;
+  --correct:#00B686;--correct-bg:#D6F5EC;--wrong:#E53935;--wrong-bg:#FEE8E8;
+  --card-shadow:0 1px 4px rgba(0,119,182,0.08);--card-shadow-hover:0 4px 16px rgba(0,119,182,0.15);
+}
+/* 🌿 Green (Forest) */
+[data-theme="green"]{
+  --bg:#EAF5EE;--app-bg:#FFFFFF;--primary:#2D7D46;--primary-light:#D4EDDA;
+  --text:#1A3A24;--text2:#4A7A58;--text3:#8AB898;
+  --border:#B8DFBF;--border2:#96CFA0;
+  --correct:#1E8C3C;--correct-bg:#D4EDDA;--wrong:#D32F2F;--wrong-bg:#FFEBEE;
+  --card-shadow:0 1px 4px rgba(45,125,70,0.08);--card-shadow-hover:0 4px 16px rgba(45,125,70,0.15);
+}
+/* 💜 Purple (Grape) */
+[data-theme="purple"]{
+  --bg:#F3EEF9;--app-bg:#FFFFFF;--primary:#7B2FBE;--primary-light:#EDE0FF;
+  --text:#2A1050;--text2:#6A5085;--text3:#A890C0;
+  --border:#DCCAEE;--border2:#C8B0E0;
+  --correct:#00897B;--correct-bg:#E0F2F1;--wrong:#C62828;--wrong-bg:#FFEBEE;
+  --card-shadow:0 1px 4px rgba(123,47,190,0.08);--card-shadow-hover:0 4px 16px rgba(123,47,190,0.15);
+}
 body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);min-height:100vh;display:flex;justify-content:center;padding:12px;color:var(--text)}
 .app{width:100%;max-width:480px;background:var(--app-bg);border-radius:20px;padding:18px;box-shadow:var(--card-shadow)}
 .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)}
@@ -201,6 +235,8 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);min-height:
     <div style="display:flex;align-items:center;gap:8px">
       <span id="session-score">ログインしてください</span>
       <button id="logout-btn" onclick="doLogout()" style="display:none;font-size:11px;padding:3px 10px;border:1px solid var(--border2);border-radius:20px;background:var(--app-bg);color:var(--text2);cursor:pointer;font-family:'DM Sans',sans-serif">ログアウト</button>
+      <button id="notif-btn" onclick="openNotif()" style="display:none;font-size:18px;padding:3px 7px;border:none;background:transparent;cursor:pointer;color:var(--text2);position:relative" title="お知らせ">🔔<span id="notif-badge" style="display:none;position:absolute;top:0;right:0;width:8px;height:8px;background:#E53935;border-radius:50%"></span></button>
+      <button id="settings-btn" onclick="openSettings()" style="display:none;font-size:18px;padding:3px 7px;border:none;background:transparent;cursor:pointer;color:var(--text2)" title="設定">⚙️</button>
     </div>
   </div>
   <div class="grade-selector">
@@ -1616,7 +1652,7 @@ function renderRanking(el){
           var weekTotal=weekLogs.reduce(function(s,l){return s+(l.total||0);},0);
           var weekRate=weekTotal>=10?Math.round(weekCorrect/weekTotal*100):null;
           if(!T_IDS[uid]){
-            rankData.push({uid:uid,name:userData.name||'名無し',grade:userData.grade||'3',
+            rankData.push({uid:uid,name:(userData.nickname||userData.name)||'名無し',grade:userData.grade||'3',
               bestScore:bestScore,weekCount:weekLogs.length,weekRate:weekRate,weekTotal:weekTotal,
               isSelf:currentUser&&currentUser.uid===uid});
           }
@@ -3133,6 +3169,175 @@ function renderBattleResult(el, data){
   });
 }
 // ============================
+
+// ⚙️ SETTINGS & 🔔 NOTIFICATIONS
+// ============================
+
+var NOTIFICATIONS = [
+  {id:'notif_004', date:'2025-06-10', title:'⚡ 早押し対戦モード追加！', body:'友達とURLを共有してリアルタイム早押しクイズで対戦できるようになりました！最大6人で対戦可能です。'},
+  {id:'notif_003', date:'2025-05-20', title:'🌙 ダークモード対応', body:'設定からダークモードに切り替えられるようになりました。夜間の学習に目に優しい表示です。'},
+  {id:'notif_002', date:'2025-04-15', title:'📊 学習グラフ改善', body:'進捗確認の画面に日別グラフを追加しました。学習の継続具合が一目で分かります。'},
+  {id:'notif_001', date:'2025-03-01', title:'🚀 Z-eiken リリース！', body:'英検単語学習アプリZ-eikenを公開しました！単語練習・模擬テスト・まちがいノートなど多彩なモードで学習できます。'},
+];
+function getReadNotifs(){ try{ return JSON.parse(localStorage.getItem('zeiken_read_notifs')||'[]'); }catch(e){ return []; } }
+function markNotifRead(id){ var r=getReadNotifs(); if(r.indexOf(id)===-1){ r.push(id); localStorage.setItem('zeiken_read_notifs',JSON.stringify(r)); } }
+function checkUnreadNotif(){
+  var read=getReadNotifs();
+  var hasUnread=NOTIFICATIONS.some(function(n){ return read.indexOf(n.id)===-1; });
+  var badge=document.getElementById('notif-badge');
+  if(badge) badge.style.display=hasUnread?'block':'none';
+}
+function openNotif(){
+  var read=getReadNotifs();
+  var overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);display:flex;align-items:flex-start;justify-content:center;z-index:400;padding:20px;overflow-y:auto';
+  var box=document.createElement('div');
+  box.style.cssText='background:var(--app-bg);border-radius:16px;width:100%;max-width:380px;padding:20px;margin-top:20px;';
+  var html='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><div style="font-size:16px;font-weight:700;color:var(--text)">🔔 お知らせ</div><button id="notif-close" style="border:none;background:transparent;font-size:20px;cursor:pointer;color:var(--text2)">✕</button></div>';
+  NOTIFICATIONS.forEach(function(n){
+    var isRead=read.indexOf(n.id)!==-1;
+    markNotifRead(n.id);
+    html+='<div style="background:var(--bg);border-radius:10px;padding:12px 14px;margin-bottom:10px;border-left:3px solid '+(isRead?'var(--border)':'var(--primary)')+'"><div style="font-size:11px;color:var(--text3);margin-bottom:3px">'+n.date+'</div><div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:5px">'+n.title+'</div><div style="font-size:12px;color:var(--text2);line-height:1.5">'+n.body+'</div></div>';
+  });
+  box.innerHTML=html; overlay.appendChild(box); document.body.appendChild(overlay);
+  document.getElementById('notif-close').addEventListener('click',function(){ document.body.removeChild(overlay); checkUnreadNotif(); });
+  overlay.addEventListener('click',function(e){ if(e.target===overlay){ document.body.removeChild(overlay); checkUnreadNotif(); } });
+  checkUnreadNotif();
+}
+function getUserSettings(){ try{ return JSON.parse(localStorage.getItem('zeiken_settings')||'{}'); }catch(e){ return {}; } }
+function saveUserSettings(s){ localStorage.setItem('zeiken_settings',JSON.stringify(s)); }
+function openSettings(){
+  var s=getUserSettings();
+  var vol=(s.volume!==undefined)?s.volume:80;
+  var nick=s.nickname||(currentUser?currentUser.name:'');
+  var curTheme=s.theme||localStorage.getItem('zeiken_theme')||(s.darkMode?'dark':'light')||'light';
+
+  var THEMES=[
+    {id:'light',  label:'☀️ ライト',  bg:'#F2F0EB', app:'#FFFFFF', pri:'#1A4FBF', txt:'#1A1A2E'},
+    {id:'dark',   label:'🌙 ダーク',  bg:'#111318', app:'#1C1F26', pri:'#5B8CFF', txt:'#E8EAFE'},
+    {id:'blue',   label:'🌊 ブルー',  bg:'#E8F4FD', app:'#FFFFFF', pri:'#0077B6', txt:'#003559'},
+    {id:'green',  label:'🌿 グリーン',bg:'#EAF5EE', app:'#FFFFFF', pri:'#2D7D46', txt:'#1A3A24'},
+    {id:'purple', label:'💜 パープル',bg:'#F3EEF9', app:'#FFFFFF', pri:'#7B2FBE', txt:'#2A1050'},
+  ];
+
+  var overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);display:flex;align-items:flex-start;justify-content:center;z-index:400;padding:20px;overflow-y:auto';
+  var box=document.createElement('div');
+  box.style.cssText='background:var(--app-bg);border-radius:16px;width:100%;max-width:380px;padding:20px;margin-top:20px;';
+
+  var themeSwatches='';
+  THEMES.forEach(function(t){
+    var sel=t.id===curTheme;
+    themeSwatches+='<button class="theme-swatch" data-tid="'+t.id+'" style="flex:1;min-width:52px;padding:8px 4px;border:2px solid '+(sel?t.pri:'#ccc')+';border-radius:10px;background:'+t.bg+';cursor:pointer;transition:all 0.15s;outline:none">'+
+      '<div style="width:24px;height:24px;border-radius:50%;background:'+t.pri+';margin:0 auto 4px"></div>'+
+      '<div style="font-size:10px;color:'+t.txt+';font-weight:'+(sel?'700':'500')+';line-height:1.2;font-family:\'DM Sans\',sans-serif">'+t.label+'</div>'+
+      (sel?'<div style="font-size:10px;margin-top:2px">✓</div>':'<div style="font-size:10px;margin-top:2px;opacity:0"> </div>')+
+    '</button>';
+  });
+
+  box.innerHTML=
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">'+
+    '<div style="font-size:16px;font-weight:700;color:var(--text)">⚙️ 設定</div>'+
+    '<button id="settings-close" style="border:none;background:transparent;font-size:20px;cursor:pointer;color:var(--text2)">✕</button></div>'+
+
+    // ニックネーム
+    '<div style="margin-bottom:18px">'+
+    '<div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">✏️ ランキング表示名（ニックネーム）</div>'+
+    '<div style="font-size:11px;color:var(--text3);margin-bottom:8px">ランキングやスコア画面に表示される名前を変更できます</div>'+
+    '<input id="settings-nick" value="'+nick.replace(/"/g,'&quot;')+'" placeholder="ニックネームを入力" maxlength="20" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;outline:none;font-family:\'DM Sans\',sans-serif;background:var(--app-bg);color:var(--text);box-sizing:border-box">'+
+    '</div>'+
+
+    // 音量
+    '<div style="margin-bottom:18px">'+
+    '<div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">🔊 効果音の音量</div>'+
+    '<div style="display:flex;align-items:center;gap:10px">'+
+    '<span style="font-size:14px">🔇</span>'+
+    '<input id="settings-vol" type="range" min="0" max="100" value="'+vol+'" style="flex:1;accent-color:var(--primary)">'+
+    '<span style="font-size:14px">🔊</span>'+
+    '<span id="settings-vol-val" style="font-size:12px;font-weight:700;color:var(--primary);min-width:32px">'+vol+'%</span>'+
+    '</div>'+
+    '<button id="settings-vol-test" style="margin-top:8px;padding:5px 14px;border:1.5px solid var(--primary);border-radius:20px;font-size:12px;background:var(--primary-light);color:var(--primary);cursor:pointer;font-family:\'DM Sans\',sans-serif">🎵 テスト再生</button>'+
+    '</div>'+
+
+    // テーマ
+    '<div style="margin-bottom:20px">'+
+    '<div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px">🎨 テーマ（背景色）</div>'+
+    '<div id="theme-swatches" style="display:flex;gap:6px;flex-wrap:wrap">'+themeSwatches+'</div>'+
+    '</div>'+
+
+    '<button id="settings-save" style="width:100%;padding:12px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">💾 保存する</button>';
+
+  overlay.appendChild(box); document.body.appendChild(overlay);
+
+  // 音量スライダー
+  document.getElementById('settings-vol').addEventListener('input',function(){ document.getElementById('settings-vol-val').textContent=this.value+'%'; });
+  document.getElementById('settings-vol-test').addEventListener('click',function(){ playTestBeep(parseInt(document.getElementById('settings-vol').value)/100); });
+
+  // テーマスウォッチ選択
+  var selectedTheme=curTheme;
+  box.querySelectorAll('.theme-swatch').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      selectedTheme=this.dataset.tid;
+      // プレビュー即反映
+      applyTheme(selectedTheme);
+      // 選択状態更新
+      var tData=THEMES.find(function(t){return t.id===selectedTheme;});
+      box.querySelectorAll('.theme-swatch').forEach(function(b){
+        var td=THEMES.find(function(t){return t.id===b.dataset.tid;});
+        var isSel=b.dataset.tid===selectedTheme;
+        b.style.borderColor=isSel?td.pri:'#ccc';
+        b.querySelector('div:last-child').textContent=isSel?'✓':' ';
+        b.querySelector('div:nth-child(2)').style.fontWeight=isSel?'700':'500';
+      });
+    });
+  });
+
+  // 閉じる
+  function closePanel(){ if(document.body.contains(overlay)) document.body.removeChild(overlay); }
+  document.getElementById('settings-close').addEventListener('click',closePanel);
+  overlay.addEventListener('click',function(e){ if(e.target===overlay) closePanel(); });
+
+  // 保存
+  document.getElementById('settings-save').addEventListener('click',function(){
+    var newNick=document.getElementById('settings-nick').value.trim();
+    var newVol=parseInt(document.getElementById('settings-vol').value);
+    var ns=getUserSettings();
+    ns.volume=newVol; ns.theme=selectedTheme;
+    if(newNick) ns.nickname=newNick;
+    // 旧フラグ削除
+    delete ns.darkMode;
+    saveUserSettings(ns);
+    if(newNick&&currentUser&&db) db.collection('users').doc(currentUser.uid).set({nickname:newNick},{merge:true});
+    applyTheme(selectedTheme);
+    window.zeikenVolume=newVol/100;
+    closePanel();
+    var toast=document.createElement('div');
+    toast.textContent='✅ 設定を保存しました';
+    toast.style.cssText='position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 20px;border-radius:24px;font-size:13px;z-index:500;font-family:\'DM Sans\',sans-serif';
+    document.body.appendChild(toast); setTimeout(function(){ if(document.body.contains(toast)) document.body.removeChild(toast); },2000);
+  });
+}
+function playTestBeep(vol){
+  try{ var ctx=new(window.AudioContext||window.webkitAudioContext)(); [523,659,784].forEach(function(f,i){ var o=ctx.createOscillator(),g=ctx.createGain(); o.connect(g);g.connect(ctx.destination); o.frequency.value=f;o.type='triangle'; g.gain.setValueAtTime((vol||0.8)*0.35,ctx.currentTime+i*0.08); g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+i*0.08+0.2); o.start(ctx.currentTime+i*0.08);o.stop(ctx.currentTime+i*0.08+0.25); }); }catch(e){}
+}
+function applyTheme(theme){
+  if(!theme||theme==='light'){
+    document.documentElement.removeAttribute('data-theme');
+  } else {
+    document.documentElement.setAttribute('data-theme', theme);
+  }
+  localStorage.setItem('zeiken_theme', theme||'light');
+}
+// 後方互換：darkMode → theme移行
+function applyDarkMode(on){ applyTheme(on?'dark':'light'); }
+function getDisplayName(){ var s=getUserSettings(); return s.nickname||(currentUser?currentUser.name:''); }
+(function(){
+  var s=getUserSettings();
+  // 旧darkMode設定を移行
+  var theme = s.theme || localStorage.getItem('zeiken_theme') || (s.darkMode||localStorage.getItem('zeiken_darkmode')==='1'?'dark':'light');
+  applyTheme(theme);
+  window.zeikenVolume=(s.volume!==undefined)?s.volume/100:0.8;
+})();
 </script>
 
 <script>
@@ -3175,6 +3380,9 @@ document.getElementById('login-btn').addEventListener('click', function(){
     document.getElementById('login-overlay').style.display='none';
     document.getElementById('session-score').textContent=name+' さん | 今日:'+dailyStats.correct+'/'+dailyStats.total;
     document.getElementById('logout-btn').style.display='block';
+    document.getElementById('settings-btn').style.display='block';
+    document.getElementById('notif-btn').style.display='block';
+    checkUnreadNotif();
   }).catch(function(e){ err.style.display='block'; err.textContent='エラーが発生しました'; console.error(e); });
 });
 document.getElementById('login-sid').addEventListener('keydown',function(e){
@@ -3207,6 +3415,8 @@ function doLogout(){
   score={correct:0,total:0};
   document.getElementById('session-score').textContent='ログインしてください';
   document.getElementById('logout-btn').style.display='none';
+  document.getElementById('settings-btn').style.display='none';
+  document.getElementById('notif-btn').style.display='none';
   document.getElementById('login-overlay').style.display='flex';
 }
 
@@ -3237,6 +3447,9 @@ function doLogout(){
         document.getElementById('login-overlay').style.display='none';
         document.getElementById('session-score').textContent=name+' さん | 今日:'+dailyStats.correct+'/'+dailyStats.total;
         document.getElementById('logout-btn').style.display='block';
+        document.getElementById('settings-btn').style.display='block';
+        document.getElementById('notif-btn').style.display='block';
+        checkUnreadNotif();
         window.history.replaceState({},'',window.location.pathname);
       }).catch(function(){});
       return;
@@ -3265,6 +3478,9 @@ function doLogout(){
       document.getElementById('login-overlay').style.display='none';
       document.getElementById('session-score').textContent=u.name+' さん | 今日:'+dailyStats.correct+'/'+dailyStats.total;
       document.getElementById('logout-btn').style.display='block';
+      document.getElementById('settings-btn').style.display='block';
+      document.getElementById('notif-btn').style.display='block';
+      checkUnreadNotif();
     }
   }catch(e){ localStorage.removeItem('eiken_user'); }
 })();
