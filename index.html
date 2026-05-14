@@ -2127,6 +2127,8 @@ renderContent();
 // ============================
 // ⚡ BATTLE MODE（早押し対戦）
 // ============================
+
+// ---- 状態管理（シングルトン）----
 var battleState = {
   roomId: null,
   unsubRoom: null,
@@ -2134,20 +2136,21 @@ var battleState = {
   myName: null,
   isHost: false,
   hostId: null,
-  currentQNum: -1,
-  myAnswered: false,  // この問題で自分が回答済みか
   grade: '3',
-  timerInt: null,
-  countdownAudio: null
+  currentQNum: -1,
+  myAnswered: false,   // この問題で自分が回答済み
+  advanceTimer: null,  // setTimeout ID（次問への移行タイマー）
+  timerInt: null       // setInterval ID（カウントダウン表示）
 };
 
+// ---- ユーティリティ ----
 function makeBattleId(){ return Math.random().toString(36).substr(2,6).toUpperCase(); }
 
 function getRandMeaningsBattle(g, exclude, count){
   var pool = VOCAB[g];
   var results = [];
   var tries = 0;
-  while(results.length < count && tries < 200){
+  while(results.length < count && tries < 300){
     tries++;
     var r = pool[Math.floor(Math.random()*pool.length)][1];
     if(r !== exclude && results.indexOf(r) === -1) results.push(r);
@@ -2159,35 +2162,30 @@ function makeBattleQuestion(g){
   var pool = VOCAB[g];
   var item = pool[Math.floor(Math.random()*pool.length)];
   var wrongs = getRandMeaningsBattle(g, item[1], 3);
-  var choices = [item[1]].concat(wrongs).sort(function(){return Math.random()-0.5;});
-  return {word: item[0], answer: item[1], choices: choices, grade: g};
+  var choices = [item[1]].concat(wrongs).sort(function(){ return Math.random()-0.5; });
+  return { word: item[0], answer: item[1], choices: choices };
 }
 
-// --- カウントダウン音（Web Audio API）---
+// ---- 音声 ----
 function playCountBeep(freq, dur){
   try {
-    var ctx = new (window.AudioContext || window.webkitAudioContext)();
-    var osc = ctx.createOscillator();
-    var gain = ctx.createGain();
+    var ctx = new(window.AudioContext||window.webkitAudioContext)();
+    var osc = ctx.createOscillator(); var gain = ctx.createGain();
     osc.connect(gain); gain.connect(ctx.destination);
-    osc.frequency.value = freq;
-    osc.type = 'sine';
+    osc.frequency.value = freq; osc.type = 'sine';
     gain.gain.setValueAtTime(0.4, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + dur);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+dur);
+    osc.start(); osc.stop(ctx.currentTime+dur);
   } catch(e){}
 }
-function playCountNum(){ playCountBeep(880, 0.15); }   // 3,2,1 のビープ
-function playCountGo(){                                  // GAME START！
+function playCountNum(){ playCountBeep(880, 0.15); }
+function playCountGo(){
   try {
-    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var ctx = new(window.AudioContext||window.webkitAudioContext)();
     [0, 0.1, 0.2].forEach(function(t){
-      var o = ctx.createOscillator();
-      var g = ctx.createGain();
+      var o=ctx.createOscillator(), g=ctx.createGain();
       o.connect(g); g.connect(ctx.destination);
-      o.frequency.value = t === 0.2 ? 1320 : 1100;
-      o.type = 'triangle';
+      o.frequency.value = t===0.2 ? 1320 : 1100; o.type='triangle';
       g.gain.setValueAtTime(0.5, ctx.currentTime+t);
       g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+t+0.25);
       o.start(ctx.currentTime+t); o.stop(ctx.currentTime+t+0.3);
@@ -2196,8 +2194,8 @@ function playCountGo(){                                  // GAME START！
 }
 function playBuzzCorrect(){
   try {
-    var ctx = new (window.AudioContext || window.webkitAudioContext)();
-    [523, 659, 784].forEach(function(f,i){
+    var ctx = new(window.AudioContext||window.webkitAudioContext)();
+    [523,659,784].forEach(function(f,i){
       var o=ctx.createOscillator(), g=ctx.createGain();
       o.connect(g); g.connect(ctx.destination);
       o.frequency.value=f; o.type='triangle';
@@ -2209,72 +2207,60 @@ function playBuzzCorrect(){
 }
 function playBuzzWrong(){
   try {
-    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var ctx = new(window.AudioContext||window.webkitAudioContext)();
     var o=ctx.createOscillator(), g=ctx.createGain();
     o.connect(g); g.connect(ctx.destination);
     o.frequency.value=180; o.type='sawtooth';
     g.gain.setValueAtTime(0.3, ctx.currentTime);
     g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+0.4);
-    o.start(ctx.currentTime); o.stop(ctx.currentTime+0.45);
+    o.start(); o.stop(ctx.currentTime+0.45);
   } catch(e){}
 }
-
-// --- カウントダウン表示 ---
+// ---- カウントダウン表示 ----
 function showCountdown(callback){
   var overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(10,10,30,0.88);display:flex;align-items:center;justify-content:center;z-index:500;flex-direction:column';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(10,10,30,0.9);display:flex;align-items:center;justify-content:center;z-index:500;flex-direction:column';
   document.body.appendChild(overlay);
-
   var nums = ['3','2','1','GAME\nSTART!'];
   var colors = ['#FF5722','#FF9800','#FFC107','#76FF03'];
   var idx = 0;
-
   function showNext(){
     if(idx >= nums.length){
-      document.body.removeChild(overlay);
-      callback();
-      return;
+      if(document.body.contains(overlay)) document.body.removeChild(overlay);
+      callback(); return;
     }
-    var n = nums[idx];
-    var c = colors[idx];
-    overlay.innerHTML = '<div style="font-size:'+(n.length>2?'52px':'96px')+';font-weight:900;color:'+c+';text-align:center;white-space:pre-line;font-family:\'DM Sans\',sans-serif;text-shadow:0 0 40px '+c+',0 0 80px '+c+';animation:cdbounce 0.3s ease-out;letter-spacing:-1px">'+n+'</div>';
-    if(idx < 3) playCountNum();
-    else playCountGo();
+    var n=nums[idx], c=colors[idx];
+    overlay.innerHTML = '<div style="font-size:'+(n.length>2?'52px':'96px')+';font-weight:900;color:'+c+';text-align:center;white-space:pre-line;font-family:\'DM Sans\',sans-serif;text-shadow:0 0 40px '+c+',0 0 80px '+c+';letter-spacing:-1px">'+n+'</div>';
+    if(idx < 3) playCountNum(); else playCountGo();
     idx++;
     setTimeout(showNext, idx <= 3 ? 900 : 1100);
   }
   showNext();
 }
 
-// --- 部屋作成・ロビー ---
+// ---- 部屋作成画面 ----
 function renderBattle(el){
   var params = new URLSearchParams(window.location.search);
   var joinRoom = params.get('battle');
-  if(joinRoom){
-    window.history.replaceState({}, '', window.location.pathname);
-    renderBattleLobby(el, joinRoom.toUpperCase(), false);
-    return;
-  }
+  if(joinRoom){ window.history.replaceState({},'',(window.location.pathname)); renderBattleLobby(el, joinRoom.toUpperCase()); return; }
   var myName = currentUser ? currentUser.name : null;
   var html = '<div style="text-align:center;padding:8px 0 16px">';
   html += '<div style="font-size:24px;margin-bottom:4px">⚡</div>';
   html += '<div style="font-size:18px;font-weight:700;color:#9C27B0;margin-bottom:4px">みんなで早押し対戦</div>';
-  html += '<div style="font-size:12px;color:var(--text3);margin-bottom:18px">早押し！正解→即次問題 / 不正解→その人は解答権なし</div>';
+  html += '<div style="font-size:12px;color:var(--text3);margin-bottom:18px">URLを友達に共有して最大6人で対戦！</div>';
   if(!myName){
-    html += '<div style="font-size:13px;color:var(--text2);margin-bottom:6px">ニックネームを入力：</div>';
-    html += '<input id="battle-guest-name" placeholder="例：たろう" style="width:100%;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:14px;margin-bottom:12px;outline:none;font-family:\'DM Sans\',sans-serif;background:var(--app-bg);color:var(--text)">';
+    html += '<input id="battle-guest-name" placeholder="ニックネーム（例：たろう）" style="width:100%;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:14px;margin-bottom:12px;outline:none;font-family:\'DM Sans\',sans-serif;background:var(--app-bg);color:var(--text)">';
   }
   html += '<div style="font-size:13px;color:var(--text2);margin-bottom:8px">対戦する英検の級：</div>';
   html += '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-bottom:18px">';
   ['5','4','3','p2','2','p1'].forEach(function(g){
     var names={'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
     var sel = g==='3';
-    html += '<button class="battle-grade-btn" data-g="'+g+'" style="padding:6px 14px;border:1.5px solid '+(sel?'#9C27B0':'var(--border2)')+';border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:'+(sel?'#9C27B0':'var(--app-bg)')+';color:'+(sel?'#fff':'var(--text2)')+';font-family:\'DM Sans\',sans-serif">'+names[g]+'</button>';
+    html += '<button class="battle-grade-btn" data-g="'+g+'" style="padding:6px 14px;border:1.5px solid '+(sel?'#9C27B0':'var(--border2)')+';border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:'+(sel?'#9C27B0':'var(--app-bg)')+';color:'+(sel?'#fff':'var(--text2)')+';transition:all 0.15s;font-family:\'DM Sans\',sans-serif">'+names[g]+'</button>';
   });
   html += '</div>';
-  html += '<button id="battle-create-btn" style="width:100%;padding:13px;background:#9C27B0;color:#fff;border:none;border-radius:var(--radius-sm);font-size:14px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;margin-bottom:10px">🎮 部屋を作る</button>';
-  html += '<div style="font-size:12px;color:var(--text3);margin-top:4px">URLを友達に送るだけで参加できます</div>';
-  html += '</div>';
+  html += '<button id="battle-create-btn" style="width:100%;padding:13px;background:#9C27B0;color:#fff;border:none;border-radius:var(--radius-sm);font-size:14px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;margin-bottom:10px">🎮 部屋を作って開始</button>';
+  html += '<div style="font-size:12px;color:var(--text3)">友達はURLを受け取るだけで参加できます</div></div>';
   el.innerHTML = html;
 
   var selGrade = '3';
@@ -2296,39 +2282,29 @@ function renderBattle(el){
       if(!name){ if(inp) inp.style.borderColor='var(--wrong)'; return; }
     }
     var roomId = makeBattleId();
-    battleState.myName = name;
-    battleState.myId = currentUser ? currentUser.uid : ('guest_'+Date.now());
-    battleState.isHost = true;
-    battleState.grade = selGrade;
-    battleState.roomId = roomId;
+    battleState.myName = name; battleState.myId = currentUser ? currentUser.uid : ('guest_'+Date.now());
+    battleState.isHost = true; battleState.grade = selGrade; battleState.roomId = roomId;
     db.collection('battle_rooms').doc(roomId).set({
-      grade: selGrade, status: 'waiting',
-      host: battleState.myId,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      players: {}, wrongers: [], currentQuestion: null, answers: {}, qNum: 0
+      grade: selGrade, status: 'waiting', host: battleState.myId,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(), players: {}
     }).then(function(){
-      return db.collection('battle_rooms').doc(roomId).update({
-        ['players.'+battleState.myId]: {name: name, score: 0}
-      });
-    }).then(function(){ renderBattleLobby(el, roomId, true); })
+      return db.collection('battle_rooms').doc(roomId).update({ ['players.'+battleState.myId]: {name: name, score: 0} });
+    }).then(function(){ renderBattleLobby(el, roomId); })
     .catch(function(e){ alert('部屋作成失敗: '+e.message); });
   });
 }
 
-function renderBattleLobby(el, roomId, isHost){
+// ---- ロビー画面 ----
+function renderBattleLobby(el, roomId){
   battleState.roomId = roomId;
-  battleState.isHost = !!isHost;
   if(battleState.unsubRoom){ battleState.unsubRoom(); battleState.unsubRoom = null; }
-
   var shareUrl = window.location.origin + window.location.pathname + '?battle=' + roomId;
-  var html = '<div style="text-align:center;padding:4px 0 12px">';
+  var html = '<div style="text-align:center;padding:4px 0 8px">';
   html += '<div style="font-size:11px;color:var(--text3);margin-bottom:2px">部屋コード</div>';
-  html += '<div style="font-size:36px;font-weight:700;color:#9C27B0;letter-spacing:4px;font-family:\'DM Mono\',monospace">'+roomId+'</div>';
-  html += '<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;font-size:10px;word-break:break-all;margin:8px 0;font-family:\'DM Mono\',monospace;color:var(--text2)">'+shareUrl+'</div>';
+  html += '<div style="font-size:32px;font-weight:700;color:#9C27B0;letter-spacing:4px;font-family:\'DM Mono\',monospace">'+roomId+'</div>';
+  html += '<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;font-size:11px;word-break:break-all;margin:6px 0;font-family:\'DM Mono\',monospace;color:var(--text2)">'+shareUrl+'</div>';
   html += '<button id="battle-copy-btn" style="padding:6px 18px;background:var(--primary-light);border:1.5px solid var(--primary);border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;color:var(--primary);font-family:\'DM Sans\',sans-serif;margin-bottom:14px">📋 URLをコピー</button>';
-  html += '</div>';
-  html += '<div id="battle-players-list" style="margin-bottom:14px"></div>';
-  html += '<div id="battle-lobby-action"></div>';
+  html += '</div><div id="battle-players-list" style="margin-bottom:14px"></div><div id="battle-lobby-action"></div>';
   el.innerHTML = html;
 
   document.getElementById('battle-copy-btn').addEventListener('click', function(){
@@ -2338,45 +2314,37 @@ function renderBattleLobby(el, roomId, isHost){
     });
   });
 
-  // ゲストの場合、名前入力してから参加
-  if(!isHost && !battleState.myId){
-    var myName = currentUser ? currentUser.name : null;
-    if(!myName){
+  // ゲストの場合は参加処理
+  if(!battleState.isHost){
+    var joinName = currentUser ? currentUser.name : null;
+    if(!joinName){
       var nameDiv = document.createElement('div');
-      nameDiv.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;z-index:300;padding:20px';
+      nameDiv.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:300;padding:20px';
       nameDiv.innerHTML = '<div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:320px"><div style="font-size:16px;font-weight:700;margin-bottom:12px">ニックネームを入力</div><input id="battle-join-name" placeholder="例：たろう" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-size:14px;margin-bottom:12px;outline:none;font-family:\'DM Sans\',sans-serif"><button id="battle-join-ok" style="width:100%;padding:12px;background:#9C27B0;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">参加する</button></div>';
       document.body.appendChild(nameDiv);
       document.getElementById('battle-join-ok').addEventListener('click', function(){
         var n = document.getElementById('battle-join-name').value.trim();
         if(!n) return;
-        battleState.myName = n;
-        battleState.myId = 'guest_'+Date.now();
-        document.body.removeChild(nameDiv);
-        joinBattleRoom(roomId, el);
+        battleState.myName = n; battleState.myId = 'guest_'+Date.now();
+        if(document.body.contains(nameDiv)) document.body.removeChild(nameDiv);
+        doJoinRoom(roomId, el);
       });
-      return;
     } else {
-      battleState.myName = myName;
-      battleState.myId = currentUser ? currentUser.uid : ('guest_'+Date.now());
-      joinBattleRoom(roomId, el);
+      battleState.myName = joinName; battleState.myId = currentUser ? currentUser.uid : ('guest_'+Date.now());
+      doJoinRoom(roomId, el);
     }
-  } else if(!isHost){
-    joinBattleRoom(roomId, el);
   }
-
   startLobbyListener(roomId, el);
 }
 
-function joinBattleRoom(roomId, el){
+function doJoinRoom(roomId, el){
   db.collection('battle_rooms').doc(roomId).get().then(function(snap){
     if(!snap.exists){ el.innerHTML='<div style="text-align:center;padding:40px;color:var(--wrong)">❌ 部屋が見つかりません</div>'; return; }
     var data = snap.data();
     if(data.status !== 'waiting'){ el.innerHTML='<div style="text-align:center;padding:40px;color:var(--wrong)">❌ すでにゲームが始まっています</div>'; return; }
     if(Object.keys(data.players||{}).length >= 6){ el.innerHTML='<div style="text-align:center;padding:40px;color:var(--wrong)">❌ 部屋が満員です</div>'; return; }
     battleState.grade = data.grade;
-    return db.collection('battle_rooms').doc(roomId).update({
-      ['players.'+battleState.myId]: {name: battleState.myName, score: 0}
-    });
+    return db.collection('battle_rooms').doc(roomId).update({ ['players.'+battleState.myId]: {name: battleState.myName, score: 0} });
   }).catch(function(e){ console.warn('join error', e); });
 }
 
@@ -2387,18 +2355,38 @@ function startLobbyListener(roomId, el){
     battleState.hostId = data.host;
     battleState.grade = data.grade;
 
-    if(data.status === 'countdown'){
-      if(battleState.unsubRoom){ battleState.unsubRoom(); battleState.unsubRoom = null; }
-      showCountdown(function(){
-        startLobbyToGameTransition(el, roomId);
-      });
-      return;
-    }
+    // ゲームが始まったら全員がゲーム画面へ遷移
     if(data.status === 'playing'){
+      if(battleState.unsubRoom){ battleState.unsubRoom(); battleState.unsubRoom = null; }
       renderBattleGame(el, data);
       return;
     }
+    // ホストだけカウントダウンをトリガー
+    if(data.status === 'countdown'){
+      if(battleState.unsubRoom){ battleState.unsubRoom(); battleState.unsubRoom = null; }
+      showCountdown(function(){
+        battleState.hostId = data.host;
+        if(battleState.myId === data.host){
+          // ホストが最初の問題をセット
+          var q = makeBattleQuestion(battleState.grade);
+          db.collection('battle_rooms').doc(roomId).update({
+            status: 'playing',
+            currentQuestion: { word: q.word, answer: q.answer, choices: q.choices, qNum: 1, totalQ: 10, startedAt: Date.now(), timeLimit: 15 },
+            answers: {}, wrongers: []
+          }).then(function(){
+            db.collection('battle_rooms').doc(roomId).get().then(function(s){ renderBattleGame(el, s.data()); });
+          });
+        } else {
+          // ゲストはplayingになるのを待つ
+          var unsub2 = db.collection('battle_rooms').doc(roomId).onSnapshot(function(s){
+            if(s.data() && s.data().status === 'playing'){ unsub2(); renderBattleGame(el, s.data()); }
+          });
+        }
+      });
+      return;
+    }
 
+    // ロビー表示更新
     var players = data.players || {};
     var pList = document.getElementById('battle-players-list');
     if(pList){
@@ -2420,7 +2408,6 @@ function startLobbyListener(roomId, el){
           setTimeout(function(){
             var btn = document.getElementById('battle-start-btn');
             if(btn) btn.addEventListener('click', function(){
-              // ホストがカウントダウンをトリガー
               db.collection('battle_rooms').doc(roomId).update({ status: 'countdown' });
             });
           }, 50);
@@ -2432,52 +2419,28 @@ function startLobbyListener(roomId, el){
   });
 }
 
-function startLobbyToGameTransition(el, roomId){
-  // カウントダウン後、ホストが最初の問題をセット
-  if(battleState.hostId === battleState.myId){
-    var q = makeBattleQuestion(battleState.grade);
-    db.collection('battle_rooms').doc(roomId).update({
-      status: 'playing',
-      currentQuestion: {
-        word: q.word, answer: q.answer, choices: q.choices,
-        qNum: 1, totalQ: 10, startedAt: Date.now(), timeLimit: 15
-      },
-      answers: {}, wrongers: [], qNum: 1
-    }).then(function(){
-      db.collection('battle_rooms').doc(roomId).get().then(function(snap){
-        renderBattleGame(el, snap.data());
-      });
-    });
-  } else {
-    // ゲストはホストがplayingにするのを待つ
-    var unsub = db.collection('battle_rooms').doc(roomId).onSnapshot(function(snap){
-      var d = snap.data();
-      if(d && d.status === 'playing'){
-        unsub();
-        renderBattleGame(el, d);
-      }
-    });
-  }
-}
-
-// --- ゲーム本体 ---
+// ---- ゲーム本体 ----
 function renderBattleGame(el, roomData){
+  // 前のリスナー・タイマーを全部クリア
   if(battleState.unsubRoom){ battleState.unsubRoom(); battleState.unsubRoom = null; }
   if(battleState.timerInt){ clearInterval(battleState.timerInt); battleState.timerInt = null; }
+  if(battleState.advanceTimer){ clearTimeout(battleState.advanceTimer); battleState.advanceTimer = null; }
+
   var roomId = battleState.roomId;
+  battleState.hostId = roomData.host;
+  battleState.grade = roomData.grade || battleState.grade;
   battleState.myAnswered = false;
   battleState.currentQNum = -1;
-  battleState.advanceScheduled = false;
 
   var html = '<div id="battle-game-wrap">';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
   html += '<div><span style="font-size:11px;color:var(--text3)">早押し対戦</span><span id="battle-qnum" style="font-size:12px;color:#9C27B0;font-weight:700;margin-left:6px"></span></div>';
-  html += '<div id="battle-timer-wrap" style="text-align:right"><span class="battle-timer" id="battle-timer">15</span><span style="font-size:11px;color:var(--text3)">秒</span></div>';
+  html += '<div style="text-align:right"><span class="battle-timer" id="battle-timer">15</span><span style="font-size:11px;color:var(--text3)">秒</span></div>';
   html += '</div>';
   html += '<div id="battle-buzz-msg" style="text-align:center;min-height:26px;font-size:13px;font-weight:700;color:#9C27B0;margin-bottom:4px"></div>';
   html += '<div class="battle-word" id="battle-word">…</div>';
   html += '<div class="battle-choices" id="battle-choices"></div>';
-  html += '<div id="battle-my-status" style="text-align:center;font-size:12px;color:var(--text3);margin-top:6px;min-height:20px"></div>';
+  html += '<div id="battle-my-status" style="text-align:center;font-size:12px;margin-top:6px;min-height:20px"></div>';
   html += '<div id="battle-players-score" style="margin-top:10px"></div>';
   html += '</div>';
   el.innerHTML = html;
@@ -2489,6 +2452,7 @@ function renderBattleGame(el, roomData){
 
     if(data.status === 'finished'){
       if(battleState.timerInt){ clearInterval(battleState.timerInt); battleState.timerInt = null; }
+      if(battleState.advanceTimer){ clearTimeout(battleState.advanceTimer); battleState.advanceTimer = null; }
       renderBattleResult(el, data);
       return;
     }
@@ -2496,7 +2460,7 @@ function renderBattleGame(el, roomData){
     var q = data.currentQuestion;
     if(!q) return;
 
-    // 問題番号表示
+    // 問題番号
     var qnumEl = document.getElementById('battle-qnum');
     if(qnumEl) qnumEl.textContent = q.qNum+'/'+q.totalQ+'問';
 
@@ -2505,14 +2469,22 @@ function renderBattleGame(el, roomData){
     if(wordEl) wordEl.textContent = q.word;
 
     var wrongers = data.wrongers || [];
-    var answers = data.answers || {};
-    var players = data.players || {};
+    var answers  = data.answers  || {};
+    var players  = data.players  || {};
+    var playerCount = Object.keys(players).length;
 
-    // --- 新しい問題が来たとき ---
+    // =========================================================
+    // 新しい問題が来たとき だけ 選択肢・タイマーを再構築
+    // =========================================================
     if(battleState.currentQNum !== q.qNum){
       battleState.currentQNum = q.qNum;
       battleState.myAnswered = false;
-      battleState.advanceScheduled = false;
+      // 前のタイマーをクリア
+      if(battleState.timerInt){ clearInterval(battleState.timerInt); battleState.timerInt = null; }
+      if(battleState.advanceTimer){ clearTimeout(battleState.advanceTimer); battleState.advanceTimer = null; }
+
+      // 単語を読み上げ
+      speakWord(q.word);
 
       // 選択肢を描画
       var choicesEl = document.getElementById('battle-choices');
@@ -2524,81 +2496,98 @@ function renderBattleGame(el, roomData){
           btn.textContent = c;
           btn.dataset.choice = c;
           btn.addEventListener('click', function(){
+            // 既回答・解答権なし はじく
             if(battleState.myAnswered) return;
             if(wrongers.indexOf(battleState.myId) !== -1) return;
+            // 正解者が既にいる場合もはじく
+            var alreadyCorrect = Object.keys(data.answers||{}).some(function(u){ return (data.answers||{})[u] && (data.answers||{})[u].correct; });
+            if(alreadyCorrect) return;
             battleState.myAnswered = true;
-            var isCorrect = (c === q.answer);
-            onBattleChoiceClick(roomId, isCorrect, c, q, data);
+            onBattleChoiceClick(roomId, c === q.answer, c, q);
           });
           choicesEl.appendChild(btn);
         });
       }
 
-      // タイマーリセット
-      if(battleState.timerInt){ clearInterval(battleState.timerInt); battleState.timerInt = null; }
+      // ---- タイマー（15秒） ----
+      // ホスト側: 時間切れで自動advance
       function updateTimer(){
         var elapsed = (Date.now() - q.startedAt) / 1000;
         var rem = Math.max(0, Math.ceil(q.timeLimit - elapsed));
         var timerEl = document.getElementById('battle-timer');
-        if(timerEl){
-          timerEl.textContent = rem;
-          timerEl.className = 'battle-timer' + (rem <= 5 ? ' danger' : '');
-        }
+        if(timerEl){ timerEl.textContent = rem; timerEl.className = 'battle-timer'+(rem<=5?' danger':''); }
         if(rem <= 0){
-          clearInterval(battleState.timerInt);
-          battleState.timerInt = null;
+          clearInterval(battleState.timerInt); battleState.timerInt = null;
           if(!battleState.myAnswered){
             battleState.myAnswered = true;
             lockChoicesDisplay(q.answer, null, false);
-            var myStatus = document.getElementById('battle-my-status');
-            if(myStatus) myStatus.textContent = '⏰ 時間切れ';
+            var ms = document.getElementById('battle-my-status');
+            if(ms){ ms.textContent='⏰ 時間切れ'; ms.style.color='var(--text3)'; }
           }
-          // ホストのみが次の問題に進める（1回だけ）
-          if(battleState.hostId === battleState.myId && !battleState.advanceScheduled){
-            battleState.advanceScheduled = true;
-            setTimeout(function(){ advanceQuestion(roomId, q); }, 1800);
-          }
+          // ホストだけが次に進める（タイマー切れ）
+          scheduleAdvance(roomId, q, 1500);
         }
       }
       updateTimer();
       battleState.timerInt = setInterval(updateTimer, 300);
+
+      // ---- ホスト監視: 5秒誰も答えなければ次へ ----
+      // （Firestoreリスナーで answersの変化を拾うので別タイマーは不要）
     }
 
-    // wrongers更新：間違えた人のボタン状態管理
-    var choicesEl = document.getElementById('battle-choices');
-    var correctAnswered = Object.keys(answers).some(function(uid){ return answers[uid] && answers[uid].correct; });
+    // =========================================================
+    // Firestoreの状態変化を毎回反映（問題が同じでも更新）
+    // =========================================================
 
-    if(correctAnswered && choicesEl){
-      lockChoicesDisplay(q.answer, null, false);
-    }
-    if(choicesEl){
-      var isMyTurn = wrongers.indexOf(battleState.myId) === -1 && !battleState.myAnswered;
-      choicesEl.querySelectorAll('.battle-choice').forEach(function(b){
-        b.style.opacity = (isMyTurn && !correctAnswered) ? '1' : '0.55';
-      });
-    }
+    // 正解者がいるか
+    var correctUid = null;
+    Object.keys(answers).forEach(function(uid){ if(answers[uid] && answers[uid].correct) correctUid = uid; });
 
-    // 自分のステータス表示
-    var myStatus = document.getElementById('battle-my-status');
-    if(myStatus){
-      if(wrongers.indexOf(battleState.myId) !== -1){
-        myStatus.textContent = '❌ あなたは解答権なし';
-        myStatus.style.color = 'var(--wrong)';
-      } else {
-        myStatus.textContent = '';
+    // 全員不正解チェック（ホストのみ判定して次へ）
+    if(!correctUid && battleState.myId === battleState.hostId){
+      var wrongCount = wrongers.length;
+      var answeredCount = Object.keys(answers).length;
+      var allWrong = wrongCount >= playerCount && playerCount > 0;
+      var allAnswered = answeredCount >= playerCount && playerCount > 0;
+      if((allWrong || allAnswered) && !battleState.advanceTimer){
+        scheduleAdvance(roomId, q, 2000);
       }
     }
 
-    // バズ表示
+    // 選択肢ロック状態の更新
+    var choicesEl = document.getElementById('battle-choices');
+    if(choicesEl){
+      var locked = !!correctUid || battleState.myAnswered;
+      choicesEl.querySelectorAll('.battle-choice').forEach(function(b){
+        if(correctUid){
+          b.classList.add('disabled');
+          if(b.dataset.choice === q.answer) b.classList.add('correct');
+        } else {
+          b.style.opacity = (wrongers.indexOf(battleState.myId) !== -1 || battleState.myAnswered) ? '0.55' : '1';
+        }
+      });
+    }
+
+    // 自分のステータス
+    var myStatus = document.getElementById('battle-my-status');
+    if(myStatus){
+      if(wrongers.indexOf(battleState.myId) !== -1 && !correctUid){
+        myStatus.textContent = '❌ 解答権なし（次の人へ）'; myStatus.style.color='var(--wrong)';
+      } else if(!battleState.myAnswered && !correctUid){
+        myStatus.textContent = ''; 
+      }
+    }
+
+    // バズメッセージ
     var buzzEl = document.getElementById('battle-buzz-msg');
     if(buzzEl){
-      var firstCorrect = null;
-      Object.keys(answers).forEach(function(uid){
-        if(answers[uid] && answers[uid].correct) firstCorrect = uid;
-      });
-      if(firstCorrect && players[firstCorrect]){
-        buzzEl.textContent = '⚡ '+players[firstCorrect].name+' が正解！';
-      } else if(wrongers.length > 0 && wrongers.length >= Object.keys(players).length){
+      if(correctUid && players[correctUid]){
+        buzzEl.textContent = '⚡ '+players[correctUid].name+' が正解！';
+        // 正解が出た→ホストが次問へ
+        if(battleState.myId === battleState.hostId && !battleState.advanceTimer){
+          scheduleAdvance(roomId, q, 2500);
+        }
+      } else if(wrongers.length > 0 && wrongers.length >= playerCount){
         buzzEl.textContent = '😱 全員不正解…';
       } else {
         buzzEl.textContent = '';
@@ -2614,56 +2603,36 @@ function renderBattleGame(el, roomData){
         var p = players[uid];
         var isWronger = wrongers.indexOf(uid) !== -1;
         var ans = answers[uid];
-        var icon = ans ? (ans.correct ? '✅' : '❌') : (isWronger ? '💀' : '…');
-        sh += '<div class="battle-player-row'+(uid===battleState.myId?' me':'')+(ans&&ans.correct?' answered-correct':isWronger?' answered-wrong':'')+'"><span style="font-size:12px;font-weight:600">'+icon+' '+p.name+(uid===battleState.hostId?' 👑':'')+'</span><span class="battle-score-badge">'+p.score+'pt</span></div>';
+        var icon = ans ? (ans.correct?'✅':'❌') : (isWronger?'💀':'…');
+        sh += '<div class="battle-player-row'+(uid===battleState.myId?' me':'')+(ans&&ans.correct?' answered-correct':isWronger?' answered-wrong':'')+'">';
+        sh += '<span style="font-size:12px;font-weight:600">'+icon+' '+p.name+(uid===battleState.hostId?' 👑':'')+'</span>';
+        sh += '<span class="battle-score-badge">'+p.score+'pt</span></div>';
       });
       scoreEl.innerHTML = sh;
     }
   });
 }
 
-function onBattleChoiceClick(roomId, isCorrect, chosen, q, data){
+// ---- 回答処理 ----
+function onBattleChoiceClick(roomId, isCorrect, chosen, q){
   if(isCorrect){
     playBuzzCorrect();
     lockChoicesDisplay(q.answer, chosen, true);
-    var scoreAdd = Math.max(1, 5 - Math.floor((Date.now() - q.startedAt)/1000));
-    var updateData = {
-      ['answers.'+battleState.myId]: {correct: true, chosen: chosen, answeredAt: Date.now()}
-    };
-    updateData['players.'+battleState.myId+'.score'] = firebase.firestore.FieldValue.increment(scoreAdd);
-    db.collection('battle_rooms').doc(roomId).update(updateData).then(function(){
-      // ホストのみが次の問題へ（1回だけ）
-      if(battleState.hostId === battleState.myId && !battleState.advanceScheduled){
-        battleState.advanceScheduled = true;
-        setTimeout(function(){ advanceQuestion(roomId, q); }, 2500);
-      }
-    });
+    var scoreAdd = Math.max(1, 5 - Math.floor((Date.now()-q.startedAt)/1000));
+    var upd = { ['answers.'+battleState.myId]: {correct:true, chosen:chosen, answeredAt:Date.now()} };
+    upd['players.'+battleState.myId+'.score'] = firebase.firestore.FieldValue.increment(scoreAdd);
+    db.collection('battle_rooms').doc(roomId).update(upd);
+    // advance はホストがonSnapshotで検知して呼ぶ
   } else {
     playBuzzWrong();
     lockChoicesDisplay(q.answer, chosen, false);
-    var updateData2 = {
+    var myStatus = document.getElementById('battle-my-status');
+    if(myStatus){ myStatus.textContent='❌ 解答権なし（次の人へ）'; myStatus.style.color='var(--wrong)'; }
+    db.collection('battle_rooms').doc(roomId).update({
       wrongers: firebase.firestore.FieldValue.arrayUnion(battleState.myId),
-      ['answers.'+battleState.myId]: {correct: false, chosen: chosen, answeredAt: Date.now()}
-    };
-    db.collection('battle_rooms').doc(roomId).update(updateData2).then(function(){
-      // ホストのみが全員不正解チェックをする
-      if(battleState.hostId === battleState.myId && !battleState.advanceScheduled){
-        db.collection('battle_rooms').doc(roomId).get().then(function(snap){
-          if(!snap.exists) return;
-          var d = snap.data();
-          // qNumが変わっていたら何もしない
-          if(!d.currentQuestion || d.currentQuestion.qNum !== q.qNum) return;
-          var players = d.players || {};
-          var wrongers = d.wrongers || [];
-          if(wrongers.length >= Object.keys(players).length){
-            if(!battleState.advanceScheduled){
-              battleState.advanceScheduled = true;
-              setTimeout(function(){ advanceQuestion(roomId, q); }, 2000);
-            }
-          }
-        });
-      }
+      ['answers.'+battleState.myId]: {correct:false, chosen:chosen, answeredAt:Date.now()}
     });
+    // advance チェックはホストがonSnapshotで行う
   }
 }
 
@@ -2675,31 +2644,39 @@ function lockChoicesDisplay(answer, chosen, isCorrect){
   });
 }
 
+// ---- 次問への移行（ホストのみ・1回だけ実行） ----
+function scheduleAdvance(roomId, q, delay){
+  if(battleState.advanceTimer) return; // 既にスケジュール済み
+  if(battleState.myId !== battleState.hostId) return; // ホストのみ
+  battleState.advanceTimer = setTimeout(function(){
+    battleState.advanceTimer = null;
+    advanceQuestion(roomId, q);
+  }, delay);
+}
+
 function advanceQuestion(roomId, q){
+  if(battleState.myId !== battleState.hostId) return;
   db.collection('battle_rooms').doc(roomId).get().then(function(snap){
     if(!snap.exists) return;
     var data = snap.data();
-    // 既に別の問題番号になっていたら何もしない（二重発火防止）
-    if(!data.currentQuestion || data.currentQuestion.qNum !== q.qNum) return;
-    // ステータスチェック
     if(data.status !== 'playing') return;
+    if(!data.currentQuestion || data.currentQuestion.qNum !== q.qNum) return; // 既に進んでいる
     if(q.qNum >= q.totalQ){
       db.collection('battle_rooms').doc(roomId).update({ status: 'finished' });
     } else {
       var nextQ = makeBattleQuestion(battleState.grade);
       db.collection('battle_rooms').doc(roomId).update({
-        currentQuestion: {
-          word: nextQ.word, answer: nextQ.answer, choices: nextQ.choices,
-          qNum: q.qNum+1, totalQ: q.totalQ, startedAt: Date.now(), timeLimit: 15
-        },
+        currentQuestion: { word:nextQ.word, answer:nextQ.answer, choices:nextQ.choices, qNum:q.qNum+1, totalQ:q.totalQ, startedAt:Date.now(), timeLimit:15 },
         answers: {}, wrongers: []
       });
     }
   });
 }
 
+// ---- 結果画面 ----
 function renderBattleResult(el, data){
   if(battleState.timerInt){ clearInterval(battleState.timerInt); battleState.timerInt = null; }
+  if(battleState.advanceTimer){ clearTimeout(battleState.advanceTimer); battleState.advanceTimer = null; }
   if(battleState.unsubRoom){ battleState.unsubRoom(); battleState.unsubRoom = null; }
   var players = data.players || {};
   var sorted = Object.keys(players).sort(function(a,b){ return (players[b].score||0)-(players[a].score||0); });
@@ -2708,12 +2685,10 @@ function renderBattleResult(el, data){
   html += '<div style="font-size:32px;margin-bottom:4px">🎉</div>';
   html += '<div style="font-size:20px;font-weight:700;color:#9C27B0;margin-bottom:16px">対戦終了！</div>';
   sorted.forEach(function(uid, i){
-    var p = players[uid];
-    var isMe = uid === battleState.myId;
+    var p = players[uid]; var isMe = uid===battleState.myId;
     html += '<div class="battle-player-row'+(isMe?' me':'')+'" style="'+(i===0?'border-color:#FFD700;background:#FFFDE7;':'')+'">';
-    html += '<span style="font-size:16px;font-weight:700">'+(medals[i]||('  '))+' '+p.name+(isMe?' (あなた)':'')+'</span>';
-    html += '<span class="battle-score-badge" style="font-size:22px">'+(p.score||0)+'pt</span>';
-    html += '</div>';
+    html += '<span style="font-size:16px;font-weight:700">'+(medals[i]||'　')+' '+p.name+(isMe?' (あなた)':'')+'</span>';
+    html += '<span class="battle-score-badge" style="font-size:22px">'+(p.score||0)+'pt</span></div>';
   });
   if(battleState.hostId === battleState.myId){
     html += '<button id="battle-again-btn" style="width:100%;padding:13px;background:#9C27B0;color:#fff;border:none;border-radius:var(--radius-sm);font-size:14px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;margin-top:16px">🔄 もう一度遊ぶ</button>';
@@ -2723,13 +2698,20 @@ function renderBattleResult(el, data){
   el.innerHTML = html;
   var againBtn = document.getElementById('battle-again-btn');
   if(againBtn) againBtn.addEventListener('click', function(){
-    // ホストが部屋をリセットしてカウントダウン再開
+    var resetPlayers = {};
+    Object.keys(data.players).forEach(function(uid){ resetPlayers[uid]={name:data.players[uid].name,score:0}; });
     db.collection('battle_rooms').doc(battleState.roomId).update({
-      status: 'countdown', currentQuestion: null, answers: {}, wrongers: [], qNum: 0,
-      players: (function(){ var p={}; Object.keys(data.players).forEach(function(uid){ p[uid]={name:data.players[uid].name,score:0}; }); return p; })()
+      status:'countdown', currentQuestion:null, answers:{}, wrongers:[], players:resetPlayers
     });
     showCountdown(function(){
-      startLobbyToGameTransition(el, battleState.roomId);
+      var q2 = makeBattleQuestion(battleState.grade);
+      db.collection('battle_rooms').doc(battleState.roomId).update({
+        status:'playing',
+        currentQuestion:{ word:q2.word,answer:q2.answer,choices:q2.choices,qNum:1,totalQ:10,startedAt:Date.now(),timeLimit:15 },
+        answers:{}, wrongers:[]
+      }).then(function(){
+        db.collection('battle_rooms').doc(battleState.roomId).get().then(function(s){ renderBattleGame(el, s.data()); });
+      });
     });
   });
   document.getElementById('battle-exit-btn').addEventListener('click', function(){
@@ -2739,285 +2721,6 @@ function renderBattleResult(el, data){
     renderContent();
   });
 }
-// ============================
-var battleState = {
-  roomId: null,
-  unsubRoom: null,
-  unsubQ: null,
-  myId: null,
-  myName: null,
-  isHost: false,
-  currentQ: null,
-  answered: false,
-  timerInt: null,
-  grade: '3'
-};
-
-function makeBattleId(){ return Math.random().toString(36).substr(2,6).toUpperCase(); }
-
-function getRandMeaningsBattle(g, exclude, count){
-  var pool = VOCAB[g];
-  var results = [];
-  var tries = 0;
-  while(results.length < count && tries < 200){
-    tries++;
-    var r = pool[Math.floor(Math.random()*pool.length)][1];
-    if(r !== exclude && results.indexOf(r) === -1) results.push(r);
-  }
-  return results;
-}
-
-function makeBattleQuestion(g){
-  var pool = VOCAB[g];
-  var item = pool[Math.floor(Math.random()*pool.length)];
-  var wrongs = getRandMeaningsBattle(g, item[1], 3);
-  var choices = [item[1]].concat(wrongs).sort(function(){return Math.random()-0.5;});
-  return {word: item[0], answer: item[1], choices: choices, grade: g, createdAt: Date.now()};
-}
-
-function renderBattle(el){
-  // Check URL for room param
-  var params = new URLSearchParams(window.location.search);
-  var joinRoom = params.get('battle');
-  if(joinRoom) {
-    window.history.replaceState({}, '', window.location.pathname);
-    renderBattleLobby(el, joinRoom.toUpperCase());
-    return;
-  }
-  var myName = currentUser ? currentUser.name : null;
-  var html = '<div style="text-align:center;padding:8px 0 16px">';
-  html += '<div style="font-size:24px;margin-bottom:4px">⚡</div>';
-  html += '<div style="font-size:18px;font-weight:700;color:#9C27B0;margin-bottom:4px">みんなで早押し対戦</div>';
-  html += '<div style="font-size:12px;color:var(--text3);margin-bottom:18px">URLを友達に共有して最大6人で対戦！</div>';
-  if(!myName){
-    html += '<div style="font-size:13px;color:var(--text2);margin-bottom:10px">ゲストとして参加する場合はニックネームを入力：</div>';
-    html += '<input id="battle-guest-name" placeholder="ニックネーム（例：たろう）" style="width:100%;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:14px;margin-bottom:12px;outline:none;font-family:\'DM Sans\',sans-serif;background:var(--app-bg);color:var(--text)">';
-  }
-  html += '<div style="font-size:13px;color:var(--text2);margin-bottom:8px">対戦する英検の級：</div>';
-  html += '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-bottom:18px">';
-  ['5','4','3','p2','2','p1'].forEach(function(g){
-    var names={'5':'5級','4':'4級','3':'3級','p2':'準2級','2':'2級','p1':'準1級'};
-    html += '<button class="battle-grade-btn" data-g="'+g+'" style="padding:6px 14px;border:1.5px solid var(--border2);border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:var(--app-bg);color:var(--text2);transition:all 0.15s;font-family:\'DM Sans\',sans-serif"'+(g==='3'?' class="battle-grade-btn bg-sel" style="padding:6px 14px;border:1.5px solid var(--primary);border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:var(--primary);color:#fff;transition:all 0.15s;font-family:\'DM Sans\',sans-serif"':'')+'>'+names[g]+'</button>';
-  });
-  html += '</div>';
-  html += '<button id="battle-create-btn" style="width:100%;padding:13px;background:#9C27B0;color:#fff;border:none;border-radius:var(--radius-sm);font-size:14px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;margin-bottom:10px">🎮 部屋を作って開始</button>';
-  html += '<div style="font-size:12px;color:var(--text3);margin-top:4px">友達はURLを受け取るだけで参加できます</div>';
-  html += '</div>';
-  el.innerHTML = html;
-
-  // Grade selector
-  var selGrade = '3';
-  el.querySelectorAll('.battle-grade-btn').forEach(function(btn){
-    btn.addEventListener('click', function(){
-      selGrade = this.dataset.g;
-      el.querySelectorAll('.battle-grade-btn').forEach(function(b){
-        b.style.background='var(--app-bg)'; b.style.color='var(--text2)'; b.style.borderColor='var(--border2)';
-      });
-      this.style.background='#9C27B0'; this.style.color='#fff'; this.style.borderColor='#9C27B0';
-    });
-  });
-
-  document.getElementById('battle-create-btn').addEventListener('click', function(){
-    var name = myName;
-    if(!name){
-      var inp = document.getElementById('battle-guest-name');
-      name = inp ? inp.value.trim() : '';
-      if(!name){ inp.style.borderColor='var(--wrong)'; return; }
-    }
-    var roomId = makeBattleId();
-    battleState.myName = name;
-    battleState.myId = currentUser ? currentUser.uid : ('guest_'+Date.now());
-    battleState.isHost = true;
-    battleState.grade = selGrade;
-    battleState.roomId = roomId;
-    // Create room in Firestore
-    db.collection('battle_rooms').doc(roomId).set({
-      grade: selGrade,
-      status: 'waiting',
-      host: battleState.myId,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      players: {}
-    }).then(function(){
-      return db.collection('battle_rooms').doc(roomId).update({
-        ['players.'+battleState.myId]: {name: name, score: 0, joinedAt: Date.now()}
-      });
-    }).then(function(){
-      renderBattleLobby(el, roomId);
-    }).catch(function(e){ alert('部屋作成失敗: '+e.message); });
-  });
-}
-
-function renderBattleLobby(el, roomId){
-  battleState.roomId = roomId;
-  if(battleState.unsubRoom) battleState.unsubRoom();
-
-  var html = '<div style="text-align:center;padding:4px 0 8px">';
-  html += '<div style="font-size:11px;color:var(--text3);margin-bottom:2px">部屋コード</div>';
-  html += '<div style="font-size:32px;font-weight:700;color:#9C27B0;letter-spacing:4px;font-family:\'DM Mono\',monospace">'+roomId+'</div>';
-  html += '<div style="font-size:11px;color:var(--text3);margin-bottom:8px">このURLを友達に共有してね</div>';
-  var shareUrl = window.location.origin + window.location.pathname + '?battle=' + roomId;
-  html += '<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;font-size:11px;word-break:break-all;margin-bottom:8px;font-family:\'DM Mono\',monospace;color:var(--text2)">'+shareUrl+'</div>';
-  html += '<button id="battle-copy-btn" style="padding:6px 18px;background:var(--primary-light);border:1.5px solid var(--primary);border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;color:var(--primary);font-family:\'DM Sans\',sans-serif;margin-bottom:14px">📋 URLをコピー</button>';
-  html += '</div>';
-  html += '<div id="battle-players-list" style="margin-bottom:14px"></div>';
-  html += '<div id="battle-lobby-action"></div>';
-  el.innerHTML = html;
-
-  document.getElementById('battle-copy-btn').addEventListener('click', function(){
-    navigator.clipboard.writeText(shareUrl).then(function(){ 
-      document.getElementById('battle-copy-btn').textContent = '✅ コピーしました！';
-      setTimeout(function(){ document.getElementById('battle-copy-btn').textContent = '📋 URLをコピー'; }, 2000);
-    });
-  });
-
-  // Join room if not host
-  if(!battleState.isHost){
-    var joinName = currentUser ? currentUser.name : null;
-    if(!joinName){
-      // Ask for name first
-      el.innerHTML += '';
-      var nameDiv = document.createElement('div');
-      nameDiv.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:300;padding:20px';
-      nameDiv.innerHTML = '<div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:320px"><div style="font-size:16px;font-weight:700;margin-bottom:12px">ニックネームを入力</div><input id="battle-join-name" placeholder="例：たろう" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-size:14px;margin-bottom:12px;outline:none;font-family:\'DM Sans\',sans-serif"><button id="battle-join-ok" style="width:100%;padding:12px;background:#9C27B0;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">参加する</button></div>';
-      document.body.appendChild(nameDiv);
-      document.getElementById('battle-join-ok').addEventListener('click', function(){
-        var n = document.getElementById('battle-join-name').value.trim();
-        if(!n) return;
-        battleState.myName = n;
-        battleState.myId = 'guest_'+Date.now();
-        document.body.removeChild(nameDiv);
-        doJoinRoom(roomId, el);
-      });
-      return;
-    } else {
-      battleState.myName = joinName;
-      battleState.myId = currentUser ? currentUser.uid : ('guest_'+Date.now());
-      doJoinRoom(roomId, el);
-    }
-  }
-
-  // Listen to room
-  battleState.unsubRoom = db.collection('battle_rooms').doc(roomId).onSnapshot(function(snap){
-    if(!snap.exists){ el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3)">部屋が見つかりません</div>'; return; }
-    var data = snap.data();
-    var players = data.players || {};
-    var pList = document.getElementById('battle-players-list');
-    if(pList){
-      var html2 = '<div style="font-size:12px;color:var(--text3);margin-bottom:6px;font-weight:600">参加者 ('+Object.keys(players).length+'/6人)</div>';
-      Object.keys(players).forEach(function(uid){
-        var p = players[uid];
-        html2 += '<div class="battle-player-row'+(uid===battleState.myId?' me':'')+'"><span style="font-size:13px;font-weight:600">'+p.name+(uid===data.host?' 👑':'')+'</span><span class="battle-score-badge">'+p.score+'pt</span></div>';
-      });
-      pList.innerHTML = html2;
-    }
-    var actionDiv = document.getElementById('battle-lobby-action');
-    if(actionDiv){
-      if(data.status === 'playing'){
-        // Game started!
-        renderBattleGame(el, data);
-        return;
-      }
-      if(battleState.isHost || data.host === battleState.myId){
-        var cnt = Object.keys(players).length;
-        actionDiv.innerHTML = cnt >= 2 
-          ? '<button id="battle-start-btn" style="width:100%;padding:13px;background:#9C27B0;color:#fff;border:none;border-radius:var(--radius-sm);font-size:14px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">⚡ ゲームスタート！('+cnt+'人)</button>'
-          : '<div style="text-align:center;font-size:13px;color:var(--text3);padding:12px">あと'+(2-cnt)+'人参加待ち…</div>';
-        if(cnt >= 2){
-          setTimeout(function(){
-            var btn = document.getElementById('battle-start-btn');
-            if(btn) btn.addEventListener('click', startBattleGame);
-          }, 100);
-        }
-      } else {
-        actionDiv.innerHTML = '<div style="text-align:center;font-size:13px;color:var(--text3);padding:12px">👑 ホストの開始を待っています…</div>';
-      }
-    }
-  });
-}
-
-function doJoinRoom(roomId, el){
-  db.collection('battle_rooms').doc(roomId).get().then(function(snap){
-    if(!snap.exists){ el.innerHTML='<div style="text-align:center;padding:40px;color:var(--wrong)">❌ 部屋が見つかりません</div>'; return; }
-    var data = snap.data();
-    if(Object.keys(data.players||{}).length >= 6){ el.innerHTML='<div style="text-align:center;padding:40px;color:var(--wrong)">❌ 部屋が満員です</div>'; return; }
-    return db.collection('battle_rooms').doc(roomId).update({
-      ['players.'+battleState.myId]: {name: battleState.myName, score: 0, joinedAt: Date.now()}
-    });
-  }).then(function(){
-    // Now listen
-    battleState.unsubRoom = db.collection('battle_rooms').doc(roomId).onSnapshot(function(snap){
-      if(!snap.exists) return;
-      var data = snap.data();
-      var players = data.players || {};
-      var pList = document.getElementById('battle-players-list');
-      if(pList){
-        var html2 = '<div style="font-size:12px;color:var(--text3);margin-bottom:6px;font-weight:600">参加者 ('+Object.keys(players).length+'/6人)</div>';
-        Object.keys(players).forEach(function(uid){
-          var p = players[uid];
-          html2 += '<div class="battle-player-row'+(uid===battleState.myId?' me':'')+'"><span style="font-size:13px;font-weight:600">'+p.name+(uid===data.host?' 👑':'')+'</span><span class="battle-score-badge">'+p.score+'pt</span></div>';
-        });
-        pList.innerHTML = html2;
-      }
-      var actionDiv = document.getElementById('battle-lobby-action');
-      if(actionDiv && data.status === 'waiting'){
-        actionDiv.innerHTML = '<div style="text-align:center;font-size:13px;color:var(--text3);padding:12px">👑 ホストの開始を待っています…</div>';
-      }
-      if(data.status === 'playing'){
-        renderBattleGame(document.getElementById('content-area'), data);
-      }
-    });
-  }).catch(function(e){ console.warn('join error', e); });
-}
-
-function startBattleGame(){
-  var roomId = battleState.roomId;
-  var q = makeBattleQuestion(battleState.grade);
-  var qData = {
-    word: q.word, answer: q.answer, choices: q.choices,
-    qNum: 1, totalQ: 10,
-    startedAt: Date.now(), timeLimit: 8
-  };
-  db.collection('battle_rooms').doc(roomId).update({
-    status: 'playing',
-    currentQuestion: qData,
-    answers: {},
-    qNum: 1
-  });
-}
-
-function renderBattleResult(el, data){
-  if(battleState.timerInt) clearInterval(battleState.timerInt);
-  if(battleState.unsubRoom) { battleState.unsubRoom(); battleState.unsubRoom = null; }
-  var players = data.players || {};
-  var sorted = Object.keys(players).sort(function(a,b){ return (players[b].score||0)-(players[a].score||0); });
-  var medals = ['🥇','🥈','🥉'];
-  var html = '<div style="text-align:center;padding:8px 0 16px">';
-  html += '<div style="font-size:28px;margin-bottom:4px">🎉</div>';
-  html += '<div style="font-size:20px;font-weight:700;color:#9C27B0;margin-bottom:16px">対戦終了！</div>';
-  sorted.forEach(function(uid, i){
-    var p = players[uid];
-    var isMe = uid === battleState.myId;
-    html += '<div class="battle-player-row'+(isMe?' me':'')+'" style="'+(i===0?'border-color:#FFD700;background:#FFFDE7;':'')+'">';
-    html += '<span style="font-size:16px;font-weight:700">'+(medals[i]||'  ')+' '+p.name+(isMe?' (あなた)':'')+'</span>';
-    html += '<span class="battle-score-badge" style="font-size:22px">'+(p.score||0)+'pt</span>';
-    html += '</div>';
-  });
-  html += '<button id="battle-again-btn" style="width:100%;padding:13px;background:#9C27B0;color:#fff;border:none;border-radius:var(--radius-sm);font-size:14px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;margin-top:16px">🔄 もう一度遊ぶ</button>';
-  html += '<button id="battle-exit-btn" style="width:100%;padding:10px;background:var(--app-bg);color:var(--text2);border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;margin-top:8px">← モード一覧へ</button>';
-  html += '</div>';
-  el.innerHTML = html;
-  document.getElementById('battle-again-btn').addEventListener('click', function(){
-    if(battleState.isHost) startBattleGame();
-    else renderBattleLobby(el, battleState.roomId);
-  });
-  document.getElementById('battle-exit-btn').addEventListener('click', function(){
-    battleState.roomId = null; battleState.isHost = false;
-    mode = 'vocab';
-    document.querySelectorAll('.mode-card').forEach(function(c){c.classList.remove('active');if(c.dataset.mode==='vocab')c.classList.add('active');});
-    renderContent();
-  });
-}
-// ============================
 
 // ⚙️ SETTINGS & 🔔 NOTIFICATIONS
 // ============================
