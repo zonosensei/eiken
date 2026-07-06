@@ -1,113 +1,85 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Z-eiken</title>
-<meta name="description" content="英検単語学習アプリ Z-eiken（5級〜準1級 対応）">
+// ===================================================================
+// localStorage アクセス層
+// キー名は constants.js の LS_KEYS のみを使い、JSON の
+// パース失敗時は安全なデフォルト値へフォールバックする。
+// ===================================================================
 
-<!-- PWA -->
-<link rel="manifest" href="manifest.json">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Z-eiken">
-<link rel="apple-touch-icon" href="icon-192.png">
+import { LS_KEYS } from './constants.js';
 
-<!-- Firebase v8 compat（互換性のため維持） -->
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+/**
+ * JSON を安全に読む。壊れていたら fallback を返す。
+ * @param {string} key
+ * @param {*} fallback
+ */
+function readJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw === null ? fallback : JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
 
-<link rel="stylesheet" href="css/styles.css">
-</head>
-<body>
+function writeJson(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
 
-<!-- ログイン画面 -->
-<div class="overlay" id="login-overlay">
-  <div class="login-card">
-    <div style="text-align:center;margin-bottom:8px">
-      <img src="assets/logo1.png" alt="Z-eiken" style="height:100px;object-fit:contain;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.15))">
-    </div>
-    <div style="font-size:22px;font-weight:700;color:var(--text);margin-bottom:2px;letter-spacing:-0.5px;font-family:'DM Sans',sans-serif">Z<span style="color:var(--primary)">-eiken</span></div>
+// ---- 級 ----------------------------------------------------------
 
-    <div id="login-err" style="font-size:13px;color:#A32D2D;background:#FCEBEB;padding:8px 12px;border-radius:6px;margin-bottom:12px;display:none"></div>
-    <label style="font-size:13px;color:var(--text2);display:block;margin-bottom:6px">生徒ID（数字8桁）</label>
-    <input id="login-sid" type="tel" placeholder="例：01880321" style="width:100%;border:1px solid #ddd;border-radius:8px;padding:10px 14px;font-size:14px;margin-bottom:14px;outline:none">
-    <label style="font-size:13px;color:var(--text2);display:block;margin-bottom:6px">受験する級を選ぶ</label>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px" id="login-grade-btns">
-      <button class="login-grade-btn" data-g="5" style="flex:1;min-width:60px;padding:8px 4px;border:1.5px solid var(--border2);border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:var(--app-bg);color:var(--text2)">5級</button>
-      <button class="login-grade-btn" data-g="4" style="flex:1;min-width:60px;padding:8px 4px;border:1.5px solid var(--border2);border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:var(--app-bg);color:var(--text2)">4級</button>
-      <button class="login-grade-btn" data-g="3" style="flex:1;min-width:60px;padding:8px 4px;border:1.5px solid var(--border2);border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:var(--app-bg);color:var(--text2)">3級</button>
-      <button class="login-grade-btn" data-g="p2" style="flex:1;min-width:60px;padding:8px 4px;border:1.5px solid var(--border2);border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:var(--app-bg);color:var(--text2)">準2級</button>
-      <button class="login-grade-btn" data-g="2" style="flex:1;min-width:60px;padding:8px 4px;border:1.5px solid var(--border2);border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:var(--app-bg);color:var(--text2)">2級</button>
-      <button class="login-grade-btn" data-g="p1" style="flex:1;min-width:60px;padding:8px 4px;border:1.5px solid var(--border2);border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:var(--app-bg);color:var(--text2)">準1級</button>
-    </div>
-    <button id="login-btn" style="width:100%;padding:12px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;letter-spacing:0.2px;transition:background 0.15s">ログイン・開始</button>
-    <div style="font-size:12px;color:#bbb;text-align:center;margin-top:12px">IDは先生から配布されたプリントを確認してください</div>
-  </div>
-</div>
+export const loadLastGrade = () => localStorage.getItem(LS_KEYS.LAST_GRADE) || '5';
+export const saveLastGrade = (grade) => localStorage.setItem(LS_KEYS.LAST_GRADE, grade);
+/** 端末にこの前選んだ級が保存されているか（自動ログイン時の級復元判定に使う） */
+export const hasLocalGrade = () => localStorage.getItem(LS_KEYS.LAST_GRADE) !== null;
 
-<!-- アプリ本体 -->
-<div class="app">
-  <div class="header">
-    <div class="header-brand"><img class="brand-logo" src="assets/logo1.png" alt=""><h1>Z<span class="accent">-eiken</span></h1></div>
-    <span id="session-score">ログインしてください</span>
-    <div class="header-actions">
-      <button id="notif-btn" class="icon-btn" style="display:none" title="お知らせ">🔔<span id="notif-badge" style="display:none"></span></button>
-      <button id="settings-btn" class="icon-btn" style="display:none" title="設定">⚙️</button>
-      <button id="logout-btn" style="display:none">ログアウト</button>
-    </div>
-  </div>
+// ---- 単語ごとの正誤記録 { "grade_word": {correct, wrong} } --------
 
-  <div class="grade-selector">
-    <button class="grade-btn" data-grade="5">5級</button>
-    <button class="grade-btn" data-grade="4">4級</button>
-    <button class="grade-btn" data-grade="3">3級</button>
-    <button class="grade-btn" data-grade="p2">準2級</button>
-    <button class="grade-btn" data-grade="2">2級</button>
-    <button class="grade-btn" data-grade="p1">準1級</button>
-  </div>
+export const loadWordStatus = () => readJson(LS_KEYS.WORD_STATUS, {});
+export const saveWordStatus = (status) => writeJson(LS_KEYS.WORD_STATUS, status);
 
-  <div class="mode-grid">
-    <div class="mode-card active" data-mode="vocab">
-      <div class="mode-icon">📖</div>
-      <div class="mode-title">単語・熟語</div>
-      <div class="mode-desc">4択クイズで覚える</div>
-    </div>
-    <div class="mode-card" data-mode="stats">
-      <div class="mode-icon">📊</div>
-      <div class="mode-title">進捗確認</div>
-      <div class="mode-desc">弱点を把握する</div>
-    </div>
-    <div class="mode-card" data-mode="mistakes">
-      <div class="mode-icon">📕</div>
-      <div class="mode-title">まちがいノート</div>
-      <div class="mode-desc">苦手度順に自動出題</div>
-    </div>
-    <div class="mode-card" data-mode="wordlist">
-      <div class="mode-icon">📋</div>
-      <div class="mode-title">単語リスト</div>
-      <div class="mode-desc">級の単語を一覧表示</div>
-    </div>
-    <div class="mode-card" data-mode="test100" style="grid-column:1/-1;border-color:var(--accent);">
-      <div class="mode-icon">⏱️</div>
-      <div class="mode-title" style="color:var(--accent);">100問テスト　8分間</div>
-      <div class="mode-desc">時間制限あり・本番形式</div>
-    </div>
-    <div class="mode-card" data-mode="ranking" style="grid-column:1/-1;border-color:#F0C040;">
-      <div class="mode-icon">🏆</div>
-      <div class="mode-title" style="color:#d4a017;">ランキング</div>
-      <div class="mode-desc">みんなの成績を確認</div>
-    </div>
-    <div class="mode-card" data-mode="battle" style="grid-column:1/-1;border-color:#E040FB;">
-      <div class="mode-icon">⚡</div>
-      <div class="mode-title" style="color:#9C27B0;">みんなで早押し対戦</div>
-      <div class="mode-desc">URLを共有して対戦開始！最大6人</div>
-    </div>
-  </div>
+// ---- 当日の学習カウンター ----------------------------------------
 
-  <div class="content-area" id="content-area"></div>
-</div>
+export const loadDailyStats = (dayKey) =>
+  readJson(LS_KEYS.DAILY_PREFIX + dayKey, { correct: 0, total: 0 });
+export const saveDailyStats = (dayKey, stats) =>
+  writeJson(LS_KEYS.DAILY_PREFIX + dayKey, stats);
 
-<script type="module" src="js/app.js"></script>
-</body>
-</html>
+// ---- まちがいノート [{word, meaning, grade, date, weak, correct}] --
+
+export const loadMistakes = () => readJson(LS_KEYS.MISTAKES, []);
+export const saveMistakes = (mistakes) => writeJson(LS_KEYS.MISTAKES, mistakes);
+export const clearMistakes = () => localStorage.removeItem(LS_KEYS.MISTAKES);
+
+// ---- 合格記録 { "pass_grade_label": {score, grade, label, date} } --
+
+export const loadPasses = () => readJson(LS_KEYS.PASSES, {});
+export const savePasses = (passes) => writeJson(LS_KEYS.PASSES, passes);
+
+// ---- ログインセッション {uid, name, ts} ---------------------------
+
+export const loadSession = () => readJson(LS_KEYS.USER, null);
+export const saveSession = (uid, name) =>
+  writeJson(LS_KEYS.USER, { uid, name, ts: Date.now() });
+export const clearSession = () => localStorage.removeItem(LS_KEYS.USER);
+
+// ---- お知らせ既読 ------------------------------------------------
+
+export const loadReadNotifs = () => readJson(LS_KEYS.READ_NOTIFS, []);
+export function markNotifRead(id) {
+  const read = loadReadNotifs();
+  if (!read.includes(id)) {
+    read.push(id);
+    writeJson(LS_KEYS.READ_NOTIFS, read);
+  }
+}
+
+// ---- ユーザー設定 {nickname, volume, theme} ------------------------
+
+export const loadSettings = () => readJson(LS_KEYS.SETTINGS, {});
+export const saveSettings = (settings) => writeJson(LS_KEYS.SETTINGS, settings);
+
+// ---- テーマ --------------------------------------------------------
+
+export const loadTheme = () => localStorage.getItem(LS_KEYS.THEME);
+export const saveTheme = (theme) => localStorage.setItem(LS_KEYS.THEME, theme || 'light');
+/** 旧バージョンの darkMode フラグ（テーマ移行用） */
+export const loadLegacyDarkMode = () => localStorage.getItem('zeiken_darkmode') === '1';
