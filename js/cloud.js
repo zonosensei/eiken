@@ -254,6 +254,28 @@ export function fetchRankingData(excludeIds) {
   });
 }
 
+// ---- 生徒名簿（roster） ----------------------------------------------
+
+/**
+ * クラウドの生徒名簿を取得する。
+ * admin.html の「生徒名簿管理」で登録された生徒がここに入る。
+ * @returns {Promise<Object<string,{name:string, group:string}>>}
+ *   キーは 8桁生徒ID。取得失敗・空の場合は {} を返す。
+ */
+export function fetchRoster() {
+  return db.collection('roster').get().then((snap) => {
+    const roster = {};
+    snap.forEach((doc) => {
+      const d = doc.data();
+      roster[doc.id] = { name: d.name || '', group: d.group === 'T' ? 'T' : 'S' };
+    });
+    return roster;
+  }).catch((e) => {
+    console.warn('名簿取得エラー', e);
+    return {};
+  });
+}
+
 // ---- バトル ----------------------------------------------------------
 
 /** battle_rooms のドキュメント参照 */

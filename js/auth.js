@@ -10,10 +10,33 @@ import { STUDENTS } from '../data/students.js';
 import { state } from './state.js';
 import { $ } from './dom.js';
 import * as storage from './storage.js';
-import { fetchUserDoc, ensureUserDoc, restoreProgressFromCloud } from './cloud.js';
+import { fetchUserDoc, ensureUserDoc, restoreProgressFromCloud, fetchRoster } from './cloud.js';
 import { updateScoreDisplay, setHeaderLoggedIn, syncGradeButtons } from './ui.js';
 import { checkUnreadNotif } from './settings.js';
 import { renderContent } from './router.js';
+
+/**
+ * 照合に使う名簿。
+ * 起動時にクラウド名簿（roster）で置き換わる。読めなければ内蔵名簿のまま。
+ * admin.html で登録した生徒はクラウド名簿に入るので、ここに反映される。
+ */
+let activeRoster = { ...STUDENTS };
+let rosterReady = null; // クラウド名簿取得の Promise（未取得時のログイン確定を待たせる）
+
+/** クラウド名簿を取り込む。内蔵名簿とマージ（クラウド優先）。 */
+function loadCloudRoster() {
+  rosterReady = fetchRoster().then((roster) => {
+    const ids = Object.keys(roster);
+    if (ids.length > 0) {
+      // クラウドに1人でもいれば、それを正とする（内蔵はフォールバック）
+      const merged = { ...STUDENTS };
+      ids.forEach((id) => { merged[id] = roster[id].name; });
+      activeRoster = merged;
+    }
+    return activeRoster;
+  }).catch(() => activeRoster);
+  return rosterReady;
+}
 
 /**
  * 入力された ID を名簿と照合する。
@@ -23,10 +46,10 @@ import { renderContent } from './router.js';
  */
 function matchStudent(raw) {
   const normalized = raw.replace(/^S/i, '');
-  for (const sid of Object.keys(STUDENTS)) {
+  for (const sid of Object.keys(activeRoster)) {
     if (sid === raw || sid === normalized
         || sid.replace(/^0+/, '') === raw.replace(/^0+/, '')) {
-      return { sid, name: STUDENTS[sid] };
+      return { sid, name: activeRoster[sid] };
     }
   }
   return null;
@@ -49,6 +72,9 @@ function completeLogin(sid, name, grade) {
 
 /** ログイン画面のイベントを紐付ける */
 export function initLoginScreen() {
+  // クラウド名簿の取得を開始（admin で登録した生徒を反映）
+  loadCloudRoster();
+
   // 級選択ボタン
   const highlightLoginGrade = () => {
     document.querySelectorAll('.login-grade-btn').forEach((b) => {
@@ -76,22 +102,37 @@ export function initLoginScreen() {
       err.textContent = 'IDを入力してください';
       return;
     }
-    const student = matchStudent(raw);
-    if (!student) {
-      err.style.display = 'block';
-      err.textContent = 'IDが見つかりません。先生に確認してください';
-      return;
-    }
     err.style.display = 'none';
-    fetchUserDoc(student.sid).then((snap) => {
-      ensureUserDoc(student.sid, student.name, state.loginGrade, snap);
-      restoreProgressFromCloud(snap.data() || {});
-      completeLogin(student.sid, student.name, state.loginGrade);
-    }).catch((e) => {
+
+    // まず現在の名簿で照合。見つからなければクラウド名簿の取得完了を待って再照合。
+    // （admin で追加直後の生徒が、まだ取り込めていないケースを救済）
+    const proceed = (student) => {
+      if (!student) {
+        err.style.display = 'block';
+        err.textContent = 'IDが見つかりません。先生に確認してください';
+        return;
+      }
+      fetchUserDoc(student.sid).then((snap) => {
+        ensureUserDoc(student.sid, student.name, state.loginGrade, snap);
+        restoreProgressFromCloud(snap.data() || {});
+        completeLogin(student.sid, student.name, state.loginGrade);
+      }).catch((e) => {
+        err.style.display = 'block';
+        err.textContent = 'エラーが発生しました';
+        console.error(e);
+      });
+    };
+
+    const found = matchStudent(raw);
+    if (found) {
+      proceed(found);
+    } else if (rosterReady) {
+      err.textContent = '確認中...';
       err.style.display = 'block';
-      err.textContent = 'エラーが発生しました';
-      console.error(e);
-    });
+      rosterReady.then(() => { err.style.display = 'none'; proceed(matchStudent(raw)); });
+    } else {
+      proceed(null);
+    }
   });
 
   // Enter キーでログイン
@@ -121,8 +162,10 @@ export function tryAutoLogin() {
   const params = new URLSearchParams(window.location.search);
   const sidParam = params.get('sid');
   if (sidParam) {
-    const student = matchStudent(sidParam);
-    if (student) {
+    // クラウド名簿の取得を待ってから照合（admin 登録直後の生徒を救済）
+    const doSidLogin = () => {
+      const student = matchStudent(sidParam);
+      if (!student) return;
       fetchUserDoc(student.sid).then((snap) => {
         const data = snap.data() || {};
         ensureUserDoc(student.sid, student.name, storage.loadLastGrade(), snap);
@@ -132,8 +175,10 @@ export function tryAutoLogin() {
         completeLogin(student.sid, student.name, savedGrade);
         window.history.replaceState({}, '', window.location.pathname);
       }).catch(() => { /* 通信不可時はログイン画面のまま */ });
-      return;
-    }
+    };
+    if (rosterReady) rosterReady.then(doSidLogin);
+    else doSidLogin();
+    return;
   }
 
   // localStorage セッションの復元

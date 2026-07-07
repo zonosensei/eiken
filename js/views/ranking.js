@@ -8,7 +8,7 @@ import { STAFF_IDS } from '../../data/students.js';
 import { GRADE_NAMES } from '../constants.js';
 import { state } from '../state.js';
 import { esc } from '../dom.js';
-import { fetchRankingData } from '../cloud.js';
+import { fetchRankingData, fetchRoster } from '../cloud.js';
 
 const TABS = [
   { key: 'score', label: '🏆 最高スコア' },
@@ -23,7 +23,14 @@ export function renderRanking(el) {
   el.innerHTML = '<div style="font-size:14px;font-weight:600;margin-bottom:8px">🏆 ランキング</div>'
     + '<div style="text-align:center;color:#aaa;padding:32px 0;font-size:13px">読み込み中...</div>';
 
-  fetchRankingData(new Set(Object.keys(STAFF_IDS)))
+  // 除外IDは内蔵スタッフ名簿＋クラウド名簿のTグループ（admin登録スタッフ）
+  fetchRoster().then((roster) => {
+    const exclude = new Set(Object.keys(STAFF_IDS));
+    Object.keys(roster).forEach((id) => {
+      if (roster[id].group === 'T') exclude.add(id);
+    });
+    return fetchRankingData(exclude);
+  })
     .then((rankData) => renderTabs(el, rankData))
     .catch((e) => {
       el.innerHTML = '<div style="text-align:center;color:#A32D2D;padding:24px;font-size:13px">ランキングの取得に失敗しました</div>';
